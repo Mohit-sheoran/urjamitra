@@ -16,13 +16,11 @@ configured_key = st.secrets.get("GEMINI_API_KEY", "")
 # --- APP HEADER & LANGUAGE SELECTION ---
 col_head, col_lang = st.columns([3, 1])
 with col_head:
-    st.title("☀️ UrjaMitra (ऊर्जा मित्र)")
-    st.caption(
-        "AI-Powered Solar Sizing, PM Surya Ghar Subsidy & Fair-Price Audit"
-    )
+  st.title("☀️ UrjaMitra (ऊर्जा मित्र)")
+  st.caption("AI-Powered Solar Sizing, PM Surya Ghar Subsidy & Fair-Price Audit")
 
 with col_lang:
-    lang = st.selectbox("🌐 भाषा / Language", ["English", "हिंदी (Hindi)"])
+  lang = st.selectbox("🌐 भाषा / Language", ["English", "हिंदी (Hindi)"])
 
 is_hindi = lang == "हिंदी (Hindi)"
 
@@ -30,14 +28,14 @@ is_hindi = lang == "हिंदी (Hindi)"
 st.sidebar.header("⚙️ " + ("उपभोक्ता विवरण" if is_hindi else "Consumer Details"))
 
 if configured_key:
-    api_key = configured_key
-    st.sidebar.success("🔑 API Key Connected Securely")
+  api_key = configured_key
+  st.sidebar.success("🔑 API Key Connected Securely")
 else:
-    api_key = st.sidebar.text_input(
-        "🔑 Enter Gemini API Key",
-        type="password",
-        help="Add GEMINI_API_KEY to Streamlit Secrets or enter here.",
-    )
+  api_key = st.sidebar.text_input(
+      "🔑 Enter Gemini API Key",
+      type="password",
+      help="Add GEMINI_API_KEY to Streamlit Secrets or enter here.",
+  )
 
 monthly_bill = st.sidebar.number_input(
     "औसत मासिक बिजली बिल (₹)" if is_hindi else "Avg. Monthly Power Bill (₹)",
@@ -80,7 +78,8 @@ consumer_type = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 st.sidebar.subheader(
-    "🔍 " + ("विक्रेता कोटेशन ऑडिट (वैकल्पिक)" if is_hindi else "Quote Audit (Optional)")
+    "🔍 "
+    + ("विक्रेता कोटेशन ऑडिट (वैकल्पिक)" if is_hindi else "Quote Audit (Optional)")
 )
 vendor_quote = st.sidebar.number_input(
     "विक्रेता द्वारा मांगा गया कुल मूल्य (₹)"
@@ -96,11 +95,10 @@ vendor_quote = st.sidebar.number_input(
 def get_configured_gemini_model(key: str):
   genai.configure(api_key=key)
   preferred = [
+      "models/gemini-3.8-flash",
+      "gemini-3.8-flash",
       "models/gemini-2.5-flash",
-      "models/gemini-2.0-flash",
-      "models/gemini-2.0-flash-exp",
       "gemini-2.5-flash",
-      "gemini-2.0-flash",
   ]
   try:
     available = [
@@ -111,11 +109,14 @@ def get_configured_gemini_model(key: str):
     for pref in preferred:
       if pref in available:
         return genai.GenerativeModel(pref)
+    for m in available:
+      if "3.8-flash" in m:
+        return genai.GenerativeModel(m)
     if available:
       return genai.GenerativeModel(available[0])
   except Exception:
     pass
-  return genai.GenerativeModel("gemini-2.5-flash")
+  return genai.GenerativeModel("gemini-3.8-flash")
 
 
 # --- DETERMINISTIC SOLAR & SUBSIDY CALCULATION ENGINE ---
@@ -193,9 +194,7 @@ with tab_advisory:
       )
   ):
     if not api_key:
-      st.error(
-          "कृपया API Key दर्ज करें। / Please enter a valid Gemini API key."
-      )
+      st.error("कृपया API Key दर्ज करें। / Please enter a valid Gemini API key.")
     else:
       with st.spinner(
           "विश्लेषण प्रगति पर है... / Generating grounded analysis..."
