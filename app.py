@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import google.generativeai as genai
 import streamlit as st
@@ -212,6 +213,60 @@ def generate_ai_text(key: str, prompt: str):
   raise last_err if last_err else RuntimeError("All available AI models busy.")
 
 
+# --- ROBUST LETTER PARSER (STRIPS SCRATCHPAD NOTES) ---
+def extract_clean_letter(raw_text: str) -> str:
+  # 1. Search for all blocks enclosed in <LETTER>...</LETTER>
+  matches = re.findall(r"<LETTER>([\s\S]*?)</LETTER>", raw_text, re.IGNORECASE)
+  if matches:
+    # Pick the longest block to ensure it's the actual letter (avoids single-word collisions)
+    longest = max(matches, key=len).strip()
+    if len(longest) > 150:
+      return longest
+
+  # 2. Check for an unclosed <LETTER> tag
+  if "<LETTER>" in raw_text or "<letter>" in raw_text:
+    parts = re.split(r"<LETTER>", raw_text, flags=re.IGNORECASE)
+    last_part = parts[-1]
+    if "</LETTER>" in last_part or "</letter>" in last_part:
+      clean = re.split(r"</LETTER>", last_part, flags=re.IGNORECASE)[0].strip()
+    else:
+      clean = last_part.strip()
+    if len(clean) > 150:
+      return clean
+
+  # 3. Fallback: Parse line-by-line and drop bulleted scratchpads
+  lines = raw_text.splitlines()
+  letter_lines = []
+  capturing = False
+  for line in lines:
+    stripped = line.strip()
+    if not capturing:
+      # Start capturing only when reaching formal header lines that are not bullet points
+      if not (
+          stripped.startswith("*")
+          or stripped.startswith("-")
+          or stripped.startswith("•")
+          or stripped.startswith("o ")
+          or stripped.startswith("(")
+      ):
+        if (
+            stripped.startswith("To,")
+            or stripped.startswith("सेवा में,")
+            or (stripped.startswith("Date:") and len(stripped) < 40)
+            or (stripped.startswith("दिनांक:") and len(stripped) < 40)
+            or stripped.startswith("From,")
+        ):
+          capturing = True
+          letter_lines.append(line)
+    else:
+      letter_lines.append(line)
+
+  if len(letter_lines) >= 8:
+    return "\n".join(letter_lines).strip()
+
+  return raw_text.strip()
+
+
 # --- APP TABS ---
 tab_advisory, tab_letter, tab_faq = st.tabs([
     (
@@ -307,20 +362,19 @@ with tab_letter:
 आप भारतीय विद्युत नियामक एवं प्रशासनिक प्रारूपण (Administrative Drafting) के विशेषज्ञ हैं।
 पीएम सूर्य घर मुफ्त बिजली योजना के अंतर्गत {state} के संबंधित बिजली वितरण निगम (DISCOM) के उप-मंडल अधिकारी (SDO) को {display_kw} kW ऑन-ग्रिड रूफटॉप सोलर प्लांट हेतु नेट-मीटरिंग एवं लोड स्वीकृति के लिए एक अत्यंत उच्च स्तरीय, कानूनी रूप से परिपूर्ण और औपचारिक आवेदन पत्र लिखें।
 
-आवेदक विवरण दिशानिर्देश:
-- सभी व्यक्तिगत विवरणों के लिए पेशेवर 'XXXX' प्रारूप का उपयोग करें:
-  * नाम: XXXX
-  * उपभोक्ता खाता संख्या (CA / Account No.): XXXXXXXXXXXX
-  * मीटर संख्या: XXXXXXXX
-  * स्वीकृत लोड: X kW
-  * पता: मकान नं. XXX, वार्ड/ग्राम XXXX, जिला XXXX, {state}
-  * मोबाइल नंबर: +91-XXXXXXXXXX
-  * ईमेल: xxxx@email.com
+आवेदक विवरण:
+सभी व्यक्तिगत विवरणों के लिए पेशेवर 'XXXX' प्रारूप का उपयोग करें:
+- उपभोक्ता का नाम: XXXX
+- उपभोक्ता खाता संख्या (CA / Account No.): XXXXXXXXXXXX
+- मीटर संख्या: XXXXXXXX
+- मौजूदा स्वीकृत लोड: X kW
+- परिसर का पता: मकान नं. XXX, वार्ड/ग्राम XXXX, जिला XXXX, {state}
+- मोबाइल नंबर: +91-XXXXXXXXXX
+- ईमेल: xxxx@email.com
 
-सख्त प्रारूप नियम:
-संपूर्ण औपचारिक पत्र को केवल और केवल <LETTER> और </LETTER> टैग के अंदर ही लिखें।
-टैग के अंदर कोई योजना नोट्स, रूपरेखा या बुलेट टिप्पणियां न लिखें।
-पत्र सीधे 'सेवा में,' से प्रारंभ करें।
+सख्त निर्देश:
+पूरे औपचारिक पत्र को अनिवार्य रूप से <LETTER> और </LETTER> टैग के भीतर ही लिखें।
+टैग के बाहर या अंदर कोई भी योजना नोट्स या रूपरेखा न लिखें।
 """
           else:
             letter_prompt = f"""
@@ -340,8 +394,8 @@ Use professional 'XXXX' placeholders for all consumer credentials:
 
 STRICT STRUCTURAL REQUIREMENT:
 Enclose the ENTIRE formal letter inside <LETTER> and </LETTER> tags.
-Do NOT write planning outlines, scratchpads, or commentary inside <LETTER>.
-Begin the letter directly inside the tags with:
+Do NOT write planning outlines, scratchpads, or commentary.
+Begin directly inside the tags with:
 
 To,
 The Sub-Divisional Officer (SDO),
@@ -350,37 +404,13 @@ Sub-Divisional Office, {state}.
 """
 
           raw_output, used_model = generate_ai_text(api_key, letter_prompt)
-
-          # --- PROGRAMMATIC SANDBOX STRIPPER ---
-          # Extracts strictly the text inside <LETTER>...</LETTER> tags
-          if "<LETTER>" in raw_output and "</LETTER>" in raw_output:
-            clean_letter = (
-                raw_output.split("<LETTER>")[1].split("</LETTER>")[0].strip()
-            )
-          elif "<LETTER>" in raw_output:
-            clean_letter = raw_output.split("<LETTER>")[1].strip()
-          else:
-            # Fallback: scan lines and drop scratchpad bullet points
-            lines = raw_output.splitlines()
-            start_idx = 0
-            for idx, line in enumerate(lines):
-              l = line.strip()
-              if (
-                  l.startswith("To,")
-                  or l.startswith("सेवा में,")
-                  or l.startswith("Date:")
-                  or l.startswith("दिनांक:")
-              ):
-                start_idx = idx
-                break
-            clean_letter = "\n".join(lines[start_idx:]).strip()
+          clean_letter = extract_clean_letter(raw_output)
 
           latency = round(time.time() - start_time, 2)
           st.success(
               f"✅ Drafted via {used_model} in {latency}s | Ready to print"
           )
 
-          # Render the clean letter directly
           st.markdown(clean_letter)
 
           with st.expander(
