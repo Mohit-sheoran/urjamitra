@@ -164,7 +164,7 @@ def get_candidate_models(key: str):
   return candidates
 
 
-# --- STREAMING DISPATCHER (FOR REPORTS & CHAT) ---
+# --- STREAMING DISPATCHER (REPORTS & FAQ) ---
 def stream_ai_response(key: str, prompt: str, placeholder, status_box):
   candidates = get_candidate_models(key)
   last_err = None
@@ -192,7 +192,7 @@ def stream_ai_response(key: str, prompt: str, placeholder, status_box):
   raise last_err if last_err else RuntimeError("All available AI models busy.")
 
 
-# --- DIRECT DISPATCHER (FOR LETTER TAB) ---
+# --- DIRECT DISPATCHER (LETTER TAB) ---
 def generate_ai_text(key: str, prompt: str):
   candidates = get_candidate_models(key)
   last_err = None
@@ -298,55 +298,87 @@ with tab_letter:
       st.error("Please enter a valid Gemini API key.")
     else:
       with st.spinner(
-          "औपचारिक आवेदन पत्र तैयार किया जा रहा है... / Drafting official Discom letter..."
+          "औपचारिक आवेदन पत्र तैयार किया जा रहा है... / Drafting professional application letter..."
       ):
         start_time = time.time()
         try:
           if is_hindi:
             letter_prompt = f"""
-पीएम सूर्य घर मुफ्त बिजली योजना के तहत {display_kw} kW सोलर रूफटॉप प्लांट के लिए निम्नलिखित औपचारिक आवेदन पत्र को पूरा करें।
-शुरुआत में कोई रूपरेखा, नोट्स या योजना बिंदु न लिखें। सीधे पत्र को जारी रखते हुए पूरा करें:
+आप भारतीय विद्युत नियामक एवं प्रशासनिक प्रारूपण (Administrative Drafting) के विशेषज्ञ हैं।
+पीएम सूर्य घर मुफ्त बिजली योजना के अंतर्गत {state} के संबंधित बिजली वितरण निगम (DISCOM) के उप-मंडल अधिकारी (SDO) को {display_kw} kW ऑन-ग्रिड रूफटॉप सोलर प्लांट हेतु नेट-मीटरिंग एवं लोड स्वीकृति के लिए एक अत्यंत उच्च स्तरीय, कानूनी रूप से परिपूर्ण और औपचारिक आवेदन पत्र लिखें।
 
-दिनांक: [दिनांक दर्ज करें]
-सेवा में,
-उप-मंडल अधिकारी (SDO),
-बिजली वितरण निगम (DHBVN/UHBVN/DISCOM), {state}।
+आवेदक विवरण दिशानिर्देश:
+- सभी व्यक्तिगत विवरणों के लिए पेशेवर 'XXXX' प्रारूप का उपयोग करें:
+  * नाम: XXXX
+  * उपभोक्ता खाता संख्या (CA / Account No.): XXXXXXXXXXXX
+  * मीटर संख्या: XXXXXXXX
+  * स्वीकृत लोड: X kW
+  * पता: मकान नं. XXX, वार्ड/ग्राम XXXX, जिला XXXX, {state}
+  * मोबाइल नंबर: +91-XXXXXXXXXX
+  * ईमेल: xxxx@email.com
 
-विषय: {display_kw} kW सोलर रूफटॉप प्लांट हेतु नेट-मीटरिंग एवं ग्रिड कनेक्टिविटी स्वीकृति के संबंध में।
-
-महोदय,
-सविनय निवेदन है कि मैं अपने आवासीय परिसर पर पीएम सूर्य घर मुफ्त बिजली योजना के अंतर्गत {display_kw} kW क्षमता का ऑन-ग्रिड सोलर रूफटॉप सिस्टम स्थापित कर रहा हूँ।
+सख्त प्रारूप नियम:
+संपूर्ण औपचारिक पत्र को केवल और केवल <LETTER> और </LETTER> टैग के अंदर ही लिखें।
+टैग के अंदर कोई योजना नोट्स, रूपरेखा या बुलेट टिप्पणियां न लिखें।
+पत्र सीधे 'सेवा में,' से प्रारंभ करें।
 """
-            expected_start = "दिनांक:"
           else:
             letter_prompt = f"""
-Complete the following formal application letter for a {display_kw} kW on-grid solar rooftop installation under PM Surya Ghar Muft Bijli Yojana in {state}.
-Do NOT output any planning outlines, scratchpads, or bullet notes. Continue and finish the letter directly:
+You are an executive legal and administrative drafting expert in Indian utility regulations.
+Draft an authoritative, highly formal, single-page application letter addressed to the Sub-Divisional Officer (SDO) of the electricity distribution utility in {state}.
+Request: Technical Feasibility Approval and Bi-directional Net-Metering Installation for a {display_kw} kW on-grid solar photovoltaic system under PM Surya Ghar Muft Bijli Yojana.
 
-Date: [Insert Date]
+Applicant Redaction / Details:
+Use professional 'XXXX' placeholders for all consumer credentials:
+- Consumer Name: XXXX
+- Consumer Account Number (CA No.): XXXXXXXXXXXX
+- Existing Meter Number: XXXXXXXX
+- Existing Sanctioned Load: X kW
+- Installation Address: House No. XXX, Sector/Village XXXX, City/District XXXX, {state}
+- Contact Number: +91-XXXXXXXXXX
+- Email: xxxx@email.com
+
+STRICT STRUCTURAL REQUIREMENT:
+Enclose the ENTIRE formal letter inside <LETTER> and </LETTER> tags.
+Do NOT write planning outlines, scratchpads, or commentary inside <LETTER>.
+Begin the letter directly inside the tags with:
+
 To,
 The Sub-Divisional Officer (SDO),
-Electricity Distribution Utility (DHBVN/UHBVN/DISCOM), {state}.
-
-Subject: Application for Sanctioned Load Feasibility and Net-Metering Connection for {display_kw} kW Solar System under PM Surya Ghar Yojana.
-
-Respected Sir/Madam,
-I am writing to formally request permission and technical feasibility approval for the installation of a {display_kw} kW on-grid rooftop solar PV system at my premises under the PM Surya Ghar Muft Bijli Yojana.
+Electricity Distribution Utility (DISCOM),
+Sub-Divisional Office, {state}.
 """
-            expected_start = "Date:"
 
           raw_output, used_model = generate_ai_text(api_key, letter_prompt)
 
-          # --- PROGRAMMATIC SCRATCHPAD STRIPPER ---
-          # Keeps only content starting from the true formal letter header
-          clean_letter = raw_output
-          for anchor in [expected_start, "To,", "सेवा में,"]:
-            if anchor in clean_letter:
-              clean_letter = anchor + clean_letter.split(anchor, 1)[1]
-              break
+          # --- PROGRAMMATIC SANDBOX STRIPPER ---
+          # Extracts strictly the text inside <LETTER>...</LETTER> tags
+          if "<LETTER>" in raw_output and "</LETTER>" in raw_output:
+            clean_letter = (
+                raw_output.split("<LETTER>")[1].split("</LETTER>")[0].strip()
+            )
+          elif "<LETTER>" in raw_output:
+            clean_letter = raw_output.split("<LETTER>")[1].strip()
+          else:
+            # Fallback: scan lines and drop scratchpad bullet points
+            lines = raw_output.splitlines()
+            start_idx = 0
+            for idx, line in enumerate(lines):
+              l = line.strip()
+              if (
+                  l.startswith("To,")
+                  or l.startswith("सेवा में,")
+                  or l.startswith("Date:")
+                  or l.startswith("दिनांक:")
+              ):
+                start_idx = idx
+                break
+            clean_letter = "\n".join(lines[start_idx:]).strip()
 
           latency = round(time.time() - start_time, 2)
-          st.success(f"✅ Drafted via {used_model} in {latency}s")
+          st.success(
+              f"✅ Drafted via {used_model} in {latency}s | Ready to print"
+          )
 
           # Render the clean letter directly
           st.markdown(clean_letter)
@@ -359,7 +391,7 @@ I am writing to formally request permission and technical feasibility approval f
                   else "Click here to Copy Plain Text"
               )
           ):
-            st.text_area("Letter Text", value=clean_letter.strip(), height=280)
+            st.text_area("Letter Text", value=clean_letter, height=360)
 
         except Exception as e:
           st.error(f"Error generating letter: {str(e)}")
