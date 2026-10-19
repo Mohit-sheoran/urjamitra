@@ -227,7 +227,15 @@ Provide these structured sections:
         status_box.info(
             f"⚡ Generating assessment via {model_name.replace('models/', '')}..."
         )
-        response = model.generate_content(prompt, stream=True)
+        try:
+          response = model.generate_content(prompt, stream=True)
+        except Exception as e:
+          if "429" in str(e):
+            status_box.warning("⏳ Free tier limit reached. Auto-waiting 10s...")
+            time.sleep(10)
+            response = model.generate_content(prompt, stream=True)
+          else:
+            raise e
 
         status_box.empty()
         report_placeholder = st.empty()
