@@ -281,12 +281,11 @@ with tab_letter:
       letter_box = st.empty()
       try:
         letter_prompt = f"""
-Draft a formal letter requesting Solar Net-Metering Connection and Sanctioned Load Feasibility.
-Addressee: The Sub-Divisional Officer (SDO), Electricity Distribution Utility ({state}).
-Applicant Plant Sizing: {display_kw} kW on-grid rooftop solar under PM Surya Ghar Yojana.
+Draft a formal net-metering application letter to the Sub-Divisional Officer (SDO) of the local electricity distribution utility in {state}.
+Plant Details: {display_kw} kW on-grid solar under PM Surya Ghar Muft Bijli Yojana.
 Language: {'Hindi' if is_hindi else 'English'}.
-Begin directly with the formal letter. Do not include introductory conversational text.
-Include blank fields for Consumer Account Number, Meter Number, and Contact Info.
+
+CRITICAL: Output ONLY the final formal letter text. Do NOT include planning notes, scratchpads, checkmarks, or bulleted drafting plans. Begin directly with 'Date: [Insert Date]'.
 """
         used_model = stream_ai_response(
             api_key, letter_prompt, letter_box, status_box
