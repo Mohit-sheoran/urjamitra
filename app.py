@@ -143,18 +143,19 @@ st.markdown("---")
 
 # --- RESILIENT MULTI-MODEL DISPATCHER ---
 def stream_ai_response(key: str, prompt: str, placeholder, status_box):
-  """Tries models sequentially. If one model hits a 429 quota limit, automatically switches to the next available model."""
+  """Sequentially tries available models. If one hits quota limits (429),
+
+  it automatically falls back to the next model.
+  """
   genai.configure(api_key=key)
 
-  # Candidate models in order of preference
   candidate_models = [
-      "models/gemma-4-26b-a4b-it",
       "models/gemini-3.8-flash",
+      "models/gemma-4-26b-a4b-it",
       "models/gemma-2-27b-it",
       "models/gemma-2-9b-it",
   ]
 
-  # Dynamically append any other text-generation models discovered in this account
   try:
     for m in genai.list_models():
       if (
@@ -171,7 +172,7 @@ def stream_ai_response(key: str, prompt: str, placeholder, status_box):
   for model_name in candidate_models:
     try:
       display_name = model_name.replace("models/", "")
-      status_box.info(f"⚡ Generating assessment via {display_name}...")
+      status_box.info(f"⚡ Generating via {display_name}...")
       model = genai.GenerativeModel(model_name)
       response = model.generate_content(prompt, stream=True)
 
@@ -185,7 +186,6 @@ def stream_ai_response(key: str, prompt: str, placeholder, status_box):
     except Exception as e:
       err_str = str(e)
       last_err = e
-      # If 429 (Quota exceeded) or 404 (Not found), seamlessly try next model
       if "429" in err_str or "404" in err_str:
         continue
       else:
@@ -209,6 +209,7 @@ tab_advisory, tab_letter, tab_faq = st.tabs([
     "❓ " + ("सौर सहायक से सवाल पूछें" if is_hindi else "Ask AI Assistant"),
 ])
 
+# --- TAB 1: DETAILED REPORT ---
 with tab_advisory:
   if st.button(
       "🚀 "
@@ -265,6 +266,7 @@ Provide these structured sections:
         status_box.empty()
         st.error(f"Error calling AI API: {str(e)}")
 
+# --- TAB 2: DISCOM LETTER ---
 with tab_letter:
   st.info(
       "डिस्कॉम (SDO कार्यालय) के लिए औपचारिक नेट-मीटरिंग अनापत्ति आवेदन।"
@@ -278,11 +280,14 @@ with tab_letter:
       st.error("Please enter a valid Gemini API key.")
     else:
       status_box = st.empty()
-      letter_placeholder = st.empty()
       start_time = time.time()
       try:
-        model_name = get_best_model(api_key)
-        model = genai.GenerativeModel(model_name)
+        genai.configure(api_key=api_key)
+        candidate_models = [
+            "models/gemini-3.8-flash",
+            "models/gemma-4-26b-a4b-it",
+            "models/gemma-2-27b-it",
+        ]
 
         if is_hindi:
           letter_prompt = f"""
@@ -295,7 +300,7 @@ with tab_letter:
 विषय: नेट-मीटरिंग एवं ग्रिड कनेक्टिविटी हेतु आवेदन...
 महोदय...
 
-केवल और केवल ऊपर दिए गए प्रारूप में अंतिम पत्र लिखें। कोई रूपरेखा या अतिरिक्त टिप्पणी न लिखें।
+केवल और केवल अंतिम पत्र लिखें। कोई रूपरेखा या योजना नोट्स न लिखें।
 """
         else:
           letter_prompt = f"""
@@ -308,24 +313,33 @@ To, The Sub-Divisional Officer (SDO)...
 Subject: Application for Net-Metering Connection for {display_kw} kW Solar System...
 Respected Sir/Madam...
 
-Output strictly the final formal letter following this format.
+Output strictly the final formal letter following this format. Do not write drafting outlines.
 """
 
-        status_box.info(
-            f"⚡ Drafting via {model_name.replace('models/', '')}..."
-        )
-        response = model.generate_content(letter_prompt)
-        raw_text = response.text
+        status_box.info("⚡ Drafting application letter...")
+        raw_text = ""
+        used_model = "AI Engine"
 
-        # --- SMART POST-PROCESSING FILTER ---
-        # Strips out any accidental outline/scratchpad generated before the letter header
+        for model_name in candidate_models:
+          try:
+            model = genai.GenerativeModel(model_name)
+            res = model.generate_content(letter_prompt)
+            raw_text = res.text
+            used_model = model_name.replace("models/", "")
+            break
+          except Exception as e:
+            if "429" in str(e) or "404" in str(e):
+              continue
+            else:
+              raise e
+
+        # --- POST-PROCESSING FILTER (Removes scratchpads & outlines) ---
         clean_text = raw_text
         for anchor in ["Date:", "दिनांक:", "To,", "सेवा में,"]:
           if anchor in clean_text:
             clean_text = anchor + clean_text.split(anchor, 1)[1]
             break
 
-        # Remove duplicate letters if the model generated a second header
         if clean_text.count("Date:") > 1:
           clean_text = "Date:" + clean_text.split("Date:")[1]
         elif clean_text.count("दिनांक:") > 1:
@@ -333,13 +347,15 @@ Output strictly the final formal letter following this format.
 
         status_box.empty()
         latency = round(time.time() - start_time, 2)
-        st.success(f"✅ Drafted in {latency}s | Ready to copy and print")
+        st.success(f"✅ Drafted via {used_model} in {latency}s")
 
-        # Display in a clean text area for easy copying
         st.text_area(
-            "📋 Ready-to-Print Letter"
-            if not is_hindi
-            else "📋 प्रिंट हेतु तैयार पत्र",
+            "📋 "
+            + (
+                "प्रिंट हेतु तैयार पत्र"
+                if is_hindi
+                else "Ready-to-Print Application Letter"
+            ),
             value=clean_text.strip(),
             height=380,
         )
@@ -347,3 +363,33 @@ Output strictly the final formal letter following this format.
       except Exception as e:
         status_box.empty()
         st.error(f"Error generating letter: {str(e)}")
+
+# --- TAB 3: AI ASSISTANT ---
+with tab_faq:
+  user_q = st.text_input(
+      "सौर ऊर्जा या योजना से संबंधित प्रश्न पूछें:"
+      if is_hindi
+      else "Ask any question regarding solar subsidies or installation:"
+  )
+  if st.button("उत्तर प्राप्त करें" if is_hindi else "Get Answer") and user_q:
+    if not api_key:
+      st.error("Please enter a valid Gemini API key.")
+    else:
+      status_box = st.empty()
+      faq_box = st.empty()
+      try:
+        faq_prompt = f"""
+You are the official PM Surya Ghar scheme query assistant.
+Answer this citizen question accurately and concisely in {lang}:
+Question: "{user_q}"
+Ensure your reply cites official MNRE rules (e.g., DCR module requirements, grid-connected vs off-grid subsidy eligibility, net metering).
+Begin directly with the answer.
+"""
+        used_model = stream_ai_response(
+            api_key, faq_prompt, faq_box, status_box
+        )
+        status_box.empty()
+        st.success(f"✅ Answered via {used_model}")
+      except Exception as e:
+        status_box.empty()
+        st.error(f"Error: {str(e)}")
