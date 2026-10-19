@@ -91,49 +91,27 @@ vendor_quote = st.sidebar.number_input(
 )
 
 
-# --- RESILIENT GEMINI RUNNER (GEMINI 3.8 FLASH TARGET) ---
-def generate_gemini_response(key: str, prompt: str):
+# --- RESILIENT MODEL SELECTOR ---
+def get_best_model(key: str):
   genai.configure(api_key=key)
-
-  # Explicitly target 3.8-flash; strictly avoid retired 1.5 and 2.5 models
-  priority_candidates = [
-      "models/gemini-3.8-flash",
-      "gemini-3.8-flash",
-      "models/gemini-3-flash",
-      "gemini-3-flash",
-  ]
-
-  last_error = None
-  for model_name in priority_candidates:
-    try:
-      model = genai.GenerativeModel(model_name)
-      res = model.generate_content(prompt)
-      return res.text, model_name
-    except Exception as e:
-      last_error = e
-      continue
-
-  # Fallback: scan available models while strictly filtering out retired versions
   try:
-    for m in genai.list_models():
-      name = m.name
-      if (
-          "generateContent" in m.supported_generation_methods
-          and "1.5" not in name
-          and "2.5" not in name
-          and "embedding" not in name
-      ):
-        try:
-          model = genai.GenerativeModel(name)
-          res = model.generate_content(prompt)
-          return res.text, name
-        except Exception as e:
-          last_error = e
-          continue
-  except Exception as e:
-    last_error = e
-
-  raise last_error if last_error else RuntimeError("No active model found.")
+    models = [
+        m.name
+        for m in genai.list_models()
+        if "generateContent" in m.supported_generation_methods
+    ]
+    # Prefer faster flash models over heavier reasoning weights
+    for m in models:
+      if "flash" in m and "1.5" not in m and "2.5" not in m:
+        return m
+    for m in models:
+      if "gemma" in m:
+        return m
+    if models:
+      return models[0]
+  except Exception:
+    pass
+  return "models/gemma-4-26b-a4b-it"
 
 
 # --- DETERMINISTIC SOLAR & SUBSIDY CALCULATION ENGINE ---
@@ -213,19 +191,23 @@ with tab_advisory:
     if not api_key:
       st.error("कृपया API Key दर्ज करें। / Please enter a valid Gemini API key.")
     else:
-      with st.spinner(
-          "विश्लेषण प्रगति पर है... / Generating grounded analysis..."
-      ):
-        start_time = time.time()
-        try:
-          quote_context = (
-              f"Vendor Quoted Price: Rs. {vendor_quote}."
-              if vendor_quote > 0
-              else "No vendor quote entered."
-          )
-          prompt = f"""
+      status_box = st.empty()
+      status_box.info("⚡ Connecting to AI engine...")
+      start_time = time.time()
+      try:
+        model_name = get_best_model(api_key)
+        model = genai.GenerativeModel(model_name)
+
+        quote_context = (
+            f"Vendor Quoted Price: Rs. {vendor_quote}."
+            if vendor_quote > 0
+            else "No vendor quote entered."
+        )
+        prompt = f"""
 You are UrjaMitra, an expert Solar Rooftop Consultant specializing in India's PM Surya Ghar Muft Bijli Yojana.
-Analyze the following user profile and return a structured assessment in {lang}:
+Analyze the following user profile and return a structured assessment directly in clean Markdown format in {lang}.
+
+DO NOT include raw scratchpad calculations, planning notes, or restatements of input. Begin immediately with '# UrjaMitra Solar Assessment Report'.
 
 User Details:
 - State: {state}
@@ -237,26 +219,35 @@ User Details:
 - Expected Annual Financial Savings: Rs. {annual_savings}
 - {quote_context}
 
-Provide a well-structured breakdown covering:
-1. Executive Feasibility Assessment (Is the roof area sufficient? Daily energy generation?)
-2. Subsidy Claim Procedure under PM Surya Ghar (National Portal steps)
-3. Quote Audit & Fair Price Verification (Compare vendor quote against benchmark ~Rs. 60,000/kW. Alert against non-DCR modules or vendor inflation).
-4. Critical Safety & Technical Tips (Earthing, Lightning arrestor, Net meter inspection).
-
-Rules:
-- Be factual and realistic.
-- Use clean Markdown headers and bullet points.
+Provide these structured sections:
+1. Executive Feasibility Assessment (Roof sufficiency, expected daily kWh units)
+2. Subsidy Claim Procedure (Official steps on pmsuryaghar.gov.in)
+3. Quote Audit & Fair Price Verification (Compare vendor quote against benchmark ~Rs. 60,000/kW. Flag non-DCR modules or inflation).
+4. Critical Safety & Technical Tips (Earthing pits, Lightning arrestor, ACDB/DCDB, Net meter).
 """
-          reply_text, used_model = generate_gemini_response(api_key, prompt)
-          latency = round(time.time() - start_time, 2)
+        status_box.info(
+            f"⚡ Generating assessment via {model_name.replace('models/', '')}..."
+        )
+        response = model.generate_content(prompt, stream=True)
 
-          st.success(
-              f"✅ Generated in {latency}s | Model: {used_model.replace('models/', '')} | API Cost: $0.00 (Free Tier) | Grounded in MNRE Operational Guidelines"
-          )
-          st.markdown(reply_text)
+        status_box.empty()
+        report_placeholder = st.empty()
+        full_text = ""
 
-        except Exception as e:
-          st.error(f"Error calling AI API: {str(e)}")
+        # Stream chunks to screen immediately
+        for chunk in response:
+          if chunk.text:
+            full_text += chunk.text
+            report_placeholder.markdown(full_text)
+
+        latency = round(time.time() - start_time, 2)
+        st.success(
+            f"✅ Completed in {latency}s | Model: {model_name.replace('models/', '')} | API Cost: $0.00 (Free Tier) | Grounded in MNRE Guidelines"
+        )
+
+      except Exception as e:
+        status_box.empty()
+        st.error(f"Error calling AI API: {str(e)}")
 
 with tab_letter:
   st.info(
@@ -272,17 +263,21 @@ with tab_letter:
     else:
       with st.spinner("Drafting official letter..."):
         try:
+          model_name = get_best_model(api_key)
+          model = genai.GenerativeModel(model_name)
           letter_prompt = f"""
 Draft a formal letter requesting Solar Net-Metering Connection and Sanctioned Load Feasibility.
 Addressee: The Sub-Divisional Officer (SDO), Electricity Distribution Utility ({state}).
 Applicant Plant Sizing: {display_kw} kW on-grid rooftop solar under PM Surya Ghar Yojana.
 Language: {'Hindi' if is_hindi else 'English'}.
+Begin directly with the formal letter. Do not include introductory conversational text.
 Include blank fields for Consumer Account Number, Meter Number, and Contact Info.
-Keep it strictly formal and ready to print.
 """
-          letter_text, _ = generate_gemini_response(api_key, letter_prompt)
+          letter_res = model.generate_content(letter_prompt)
           st.text_area(
-              "Copy / Print Application Letter", value=letter_text, height=350
+              "Copy / Print Application Letter",
+              value=letter_res.text,
+              height=350,
           )
         except Exception as e:
           st.error(f"Error generating letter: {str(e)}")
@@ -299,13 +294,13 @@ with tab_faq:
     else:
       with st.spinner("Searching official guidelines..."):
         try:
+          model_name = get_best_model(api_key)
+          model = genai.GenerativeModel(model_name)
           faq_prompt = f"""
 You are the official PM Surya Ghar scheme query assistant.
 Answer this citizen question accurately and concisely in {lang}:
 Question: "{user_q}"
 Ensure your reply cites official MNRE rules (e.g., DCR module requirements, grid-connected vs off-grid subsidy eligibility, net metering).
+Begin directly with the answer.
 """
-          faq_text, _ = generate_gemini_response(api_key, faq_prompt)
-          st.markdown(faq_text)
-        except Exception as e:
-          st.error(f"Error: {str(e)}")
+          faq_res = model.generate
