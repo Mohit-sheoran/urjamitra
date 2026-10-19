@@ -91,32 +91,49 @@ vendor_quote = st.sidebar.number_input(
 )
 
 
-# --- SMART MODEL RESOLVER ---
-def get_configured_gemini_model(key: str):
+# --- RESILIENT GEMINI RUNNER (GEMINI 3.8 FLASH TARGET) ---
+def generate_gemini_response(key: str, prompt: str):
   genai.configure(api_key=key)
-  preferred = [
+
+  # Explicitly target 3.8-flash; strictly avoid retired 1.5 and 2.5 models
+  priority_candidates = [
       "models/gemini-3.8-flash",
       "gemini-3.8-flash",
-      "models/gemini-2.5-flash",
-      "gemini-2.5-flash",
+      "models/gemini-3-flash",
+      "gemini-3-flash",
   ]
+
+  last_error = None
+  for model_name in priority_candidates:
+    try:
+      model = genai.GenerativeModel(model_name)
+      res = model.generate_content(prompt)
+      return res.text, model_name
+    except Exception as e:
+      last_error = e
+      continue
+
+  # Fallback: scan available models while strictly filtering out retired versions
   try:
-    available = [
-        m.name
-        for m in genai.list_models()
-        if "generateContent" in m.supported_generation_methods
-    ]
-    for pref in preferred:
-      if pref in available:
-        return genai.GenerativeModel(pref)
-    for m in available:
-      if "3.8-flash" in m:
-        return genai.GenerativeModel(m)
-    if available:
-      return genai.GenerativeModel(available[0])
-  except Exception:
-    pass
-  return genai.GenerativeModel("gemini-3.8-flash")
+    for m in genai.list_models():
+      name = m.name
+      if (
+          "generateContent" in m.supported_generation_methods
+          and "1.5" not in name
+          and "2.5" not in name
+          and "embedding" not in name
+      ):
+        try:
+          model = genai.GenerativeModel(name)
+          res = model.generate_content(prompt)
+          return res.text, name
+        except Exception as e:
+          last_error = e
+          continue
+  except Exception as e:
+    last_error = e
+
+  raise last_error if last_error else RuntimeError("No active model found.")
 
 
 # --- DETERMINISTIC SOLAR & SUBSIDY CALCULATION ENGINE ---
@@ -201,8 +218,6 @@ with tab_advisory:
       ):
         start_time = time.time()
         try:
-          model = get_configured_gemini_model(api_key)
-
           quote_context = (
               f"Vendor Quoted Price: Rs. {vendor_quote}."
               if vendor_quote > 0
@@ -232,13 +247,13 @@ Rules:
 - Be factual and realistic.
 - Use clean Markdown headers and bullet points.
 """
-          response = model.generate_content(prompt)
+          reply_text, used_model = generate_gemini_response(api_key, prompt)
           latency = round(time.time() - start_time, 2)
 
           st.success(
-              f"✅ Generated in {latency}s | Model: {model.model_name.replace('models/', '')} | API Cost: $0.00 (Free Tier) | Grounded in MNRE Operational Guidelines"
+              f"✅ Generated in {latency}s | Model: {used_model.replace('models/', '')} | API Cost: $0.00 (Free Tier) | Grounded in MNRE Operational Guidelines"
           )
-          st.markdown(response.text)
+          st.markdown(reply_text)
 
         except Exception as e:
           st.error(f"Error calling AI API: {str(e)}")
@@ -257,7 +272,6 @@ with tab_letter:
     else:
       with st.spinner("Drafting official letter..."):
         try:
-          model = get_configured_gemini_model(api_key)
           letter_prompt = f"""
 Draft a formal letter requesting Solar Net-Metering Connection and Sanctioned Load Feasibility.
 Addressee: The Sub-Divisional Officer (SDO), Electricity Distribution Utility ({state}).
@@ -266,11 +280,9 @@ Language: {'Hindi' if is_hindi else 'English'}.
 Include blank fields for Consumer Account Number, Meter Number, and Contact Info.
 Keep it strictly formal and ready to print.
 """
-          letter_res = model.generate_content(letter_prompt)
+          letter_text, _ = generate_gemini_response(api_key, letter_prompt)
           st.text_area(
-              "Copy / Print Application Letter",
-              value=letter_res.text,
-              height=350,
+              "Copy / Print Application Letter", value=letter_text, height=350
           )
         except Exception as e:
           st.error(f"Error generating letter: {str(e)}")
@@ -287,14 +299,13 @@ with tab_faq:
     else:
       with st.spinner("Searching official guidelines..."):
         try:
-          model = get_configured_gemini_model(api_key)
           faq_prompt = f"""
 You are the official PM Surya Ghar scheme query assistant.
 Answer this citizen question accurately and concisely in {lang}:
 Question: "{user_q}"
 Ensure your reply cites official MNRE rules (e.g., DCR module requirements, grid-connected vs off-grid subsidy eligibility, net metering).
 """
-          faq_res = model.generate_content(faq_prompt)
-          st.markdown(faq_res.text)
+          faq_text, _ = generate_gemini_response(api_key, faq_prompt)
+          st.markdown(faq_text)
         except Exception as e:
           st.error(f"Error: {str(e)}")
