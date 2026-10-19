@@ -11,7 +11,6 @@ st.set_page_config(
 )
 
 # --- RETRIEVE SECURE API KEY ---
-# Checks Streamlit Secrets first, falls back to manual entry if empty
 configured_key = st.secrets.get("GEMINI_API_KEY", "")
 
 # --- APP HEADER & LANGUAGE SELECTION ---
@@ -92,6 +91,33 @@ vendor_quote = st.sidebar.number_input(
     step=5000,
 )
 
+
+# --- SMART MODEL RESOLVER ---
+def get_configured_gemini_model(key: str):
+  genai.configure(api_key=key)
+  preferred = [
+      "models/gemini-2.5-flash",
+      "models/gemini-2.0-flash",
+      "models/gemini-2.0-flash-exp",
+      "gemini-2.5-flash",
+      "gemini-2.0-flash",
+  ]
+  try:
+    available = [
+        m.name
+        for m in genai.list_models()
+        if "generateContent" in m.supported_generation_methods
+    ]
+    for pref in preferred:
+      if pref in available:
+        return genai.GenerativeModel(pref)
+    if available:
+      return genai.GenerativeModel(available[0])
+  except Exception:
+    pass
+  return genai.GenerativeModel("gemini-2.5-flash")
+
+
 # --- DETERMINISTIC SOLAR & SUBSIDY CALCULATION ENGINE ---
 unit_rate = 7.0
 est_units_per_month = monthly_bill / unit_rate
@@ -102,14 +128,14 @@ recommended_kw = max(1.0, min(calculated_kw, max_kw_by_roof))
 
 # MNRE PM Surya Ghar Subsidy slabs
 if recommended_kw < 1.5:
-    subsidy_amount = 30000
-    display_kw = 1
+  subsidy_amount = 30000
+  display_kw = 1
 elif recommended_kw < 2.5:
-    subsidy_amount = 60000
-    display_kw = 2
+  subsidy_amount = 60000
+  display_kw = 2
 else:
-    subsidy_amount = 78000
-    display_kw = int(recommended_kw)
+  subsidy_amount = 78000
+  display_kw = int(recommended_kw)
 
 bench_gross_cost = display_kw * 60000
 net_estimated_cost = max(0, bench_gross_cost - subsidy_amount)
@@ -158,22 +184,32 @@ tab_advisory, tab_letter, tab_faq = st.tabs([
 ])
 
 with tab_advisory:
-    if st.button("🚀 " + ("विस्तृत रिपोर्ट तैयार करें" if is_hindi else "Generate Detailed Report")):
-        if not api_key:
-            st.error("Please provide an API key.")
-        else:
-            with st.spinner("Generating grounded analysis..."):
-                start_time = time.time()
-                try:
-                    genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel("gemini-1.5-flash")
+  if st.button(
+      "🚀 "
+      + (
+          "विस्तृत रिपोर्ट तैयार करें"
+          if is_hindi
+          else "Generate Detailed Report"
+      )
+  ):
+    if not api_key:
+      st.error(
+          "कृपया API Key दर्ज करें। / Please enter a valid Gemini API key."
+      )
+    else:
+      with st.spinner(
+          "विश्लेषण प्रगति पर है... / Generating grounded analysis..."
+      ):
+        start_time = time.time()
+        try:
+          model = get_configured_gemini_model(api_key)
 
-                    quote_context = (
-                        f"Vendor Quoted Price: Rs. {vendor_quote}."
-                        if vendor_quote > 0
-                        else "No vendor quote entered."
-                    )
-                    prompt = f"""
+          quote_context = (
+              f"Vendor Quoted Price: Rs. {vendor_quote}."
+              if vendor_quote > 0
+              else "No vendor quote entered."
+          )
+          prompt = f"""
 You are UrjaMitra, an expert Solar Rooftop Consultant specializing in India's PM Surya Ghar Muft Bijli Yojana.
 Analyze the following user profile and return a structured assessment in {lang}:
 
@@ -188,7 +224,7 @@ User Details:
 - {quote_context}
 
 Provide a well-structured breakdown covering:
-1. Executive Feasibility Assessment (Is roof area sufficient? Daily energy generated?)
+1. Executive Feasibility Assessment (Is the roof area sufficient? Daily energy generation?)
 2. Subsidy Claim Procedure under PM Surya Ghar (National Portal steps)
 3. Quote Audit & Fair Price Verification (Compare vendor quote against benchmark ~Rs. 60,000/kW. Alert against non-DCR modules or vendor inflation).
 4. Critical Safety & Technical Tips (Earthing, Lightning arrestor, Net meter inspection).
@@ -197,31 +233,33 @@ Rules:
 - Be factual and realistic.
 - Use clean Markdown headers and bullet points.
 """
-                    response = model.generate_content(prompt)
-                    latency = round(time.time() - start_time, 2)
+          response = model.generate_content(prompt)
+          latency = round(time.time() - start_time, 2)
 
-                    st.success(
-                        f"✅ Generated in {latency}s | API Cost: $0.00 (Gemini Free Tier) | Grounded in MNRE Operational Guidelines"
-                    )
-                    st.markdown(response.text)
+          st.success(
+              f"✅ Generated in {latency}s | Model: {model.model_name.replace('models/', '')} | API Cost: $0.00 (Free Tier) | Grounded in MNRE Operational Guidelines"
+          )
+          st.markdown(response.text)
 
-                except Exception as e:
-                    st.error(f"Error calling AI API: {str(e)}")
+        except Exception as e:
+          st.error(f"Error calling AI API: {str(e)}")
 
 with tab_letter:
-    st.info(
-        "डिस्कॉम (SDO कार्यालय) के लिए औपचारिक नेट-मीटरिंग अनापत्ति आवेदन।"
-        if is_hindi
-        else "Formal Net-Metering Application Letter for your local Discom SDO."
-    )
-    if st.button("📝 " + ("आवेदन पत्र तैयार करें" if is_hindi else "Draft Application Letter")):
-        if not api_key:
-            st.error("Please provide an API key.")
-        else:
-            with st.spinner("Drafting official letter..."):
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel("gemini-1.5-flash")
-                letter_prompt = f"""
+  st.info(
+      "डिस्कॉम (SDO कार्यालय) के लिए औपचारिक नेट-मीटरिंग अनापत्ति आवेदन।"
+      if is_hindi
+      else "Formal Net-Metering Application Letter for your local Discom SDO."
+  )
+  if st.button(
+      "📝 " + ("आवेदन पत्र तैयार करें" if is_hindi else "Draft Application Letter")
+  ):
+    if not api_key:
+      st.error("Please enter a valid Gemini API key.")
+    else:
+      with st.spinner("Drafting official letter..."):
+        try:
+          model = get_configured_gemini_model(api_key)
+          letter_prompt = f"""
 Draft a formal letter requesting Solar Net-Metering Connection and Sanctioned Load Feasibility.
 Addressee: The Sub-Divisional Officer (SDO), Electricity Distribution Utility ({state}).
 Applicant Plant Sizing: {display_kw} kW on-grid rooftop solar under PM Surya Ghar Yojana.
@@ -229,33 +267,35 @@ Language: {'Hindi' if is_hindi else 'English'}.
 Include blank fields for Consumer Account Number, Meter Number, and Contact Info.
 Keep it strictly formal and ready to print.
 """
-                letter_res = model.generate_content(letter_prompt)
-                st.text_area(
-                    "Copy / Print Application Letter",
-                    value=letter_res.text,
-                    height=350,
-                )
+          letter_res = model.generate_content(letter_prompt)
+          st.text_area(
+              "Copy / Print Application Letter",
+              value=letter_res.text,
+              height=350,
+          )
+        except Exception as e:
+          st.error(f"Error generating letter: {str(e)}")
 
 with tab_faq:
-    user_q = st.text_input(
-        "सौर ऊर्जा या योजना से संबंधित प्रश्न पूछें:"
-        if is_hindi
-        else "Ask any question regarding solar subsidies or installation:"
-    )
-    if st.button(
-        "उत्तर प्राप्त करें" if is_hindi else "Get Answer"
-    ) and user_q:
-        if not api_key:
-            st.error("Please provide an API key.")
-        else:
-            with st.spinner("Searching official guidelines..."):
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel("gemini-1.5-flash")
-                faq_prompt = f"""
+  user_q = st.text_input(
+      "सौर ऊर्जा या योजना से संबंधित प्रश्न पूछें:"
+      if is_hindi
+      else "Ask any question regarding solar subsidies or installation:"
+  )
+  if st.button("उत्तर प्राप्त करें" if is_hindi else "Get Answer") and user_q:
+    if not api_key:
+      st.error("Please enter a valid Gemini API key.")
+    else:
+      with st.spinner("Searching official guidelines..."):
+        try:
+          model = get_configured_gemini_model(api_key)
+          faq_prompt = f"""
 You are the official PM Surya Ghar scheme query assistant.
 Answer this citizen question accurately and concisely in {lang}:
 Question: "{user_q}"
 Ensure your reply cites official MNRE rules (e.g., DCR module requirements, grid-connected vs off-grid subsidy eligibility, net metering).
 """
-                faq_res = model.generate_content(faq_prompt)
-                st.markdown(faq_res.text)
+          faq_res = model.generate_content(faq_prompt)
+          st.markdown(faq_res.text)
+        except Exception as e:
+          st.error(f"Error: {str(e)}")
