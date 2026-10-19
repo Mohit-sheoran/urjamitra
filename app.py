@@ -90,29 +90,6 @@ vendor_quote = st.sidebar.number_input(
     step=5000,
 )
 
-
-# --- RESILIENT MODEL SELECTOR ---
-def get_best_model(key: str):
-  genai.configure(api_key=key)
-  try:
-    models = [
-        m.name
-        for m in genai.list_models()
-        if "generateContent" in m.supported_generation_methods
-    ]
-    for m in models:
-      if "flash" in m and "1.5" not in m and "2.5" not in m:
-        return m
-    for m in models:
-      if "gemma" in m:
-        return m
-    if models:
-      return models[0]
-  except Exception:
-    pass
-  return "models/gemma-4-26b-a4b-it"
-
-
 # --- DETERMINISTIC SOLAR & SUBSIDY CALCULATION ENGINE ---
 unit_rate = 7.0
 est_units_per_month = monthly_bill / unit_rate
@@ -163,6 +140,60 @@ m4.metric(
 
 st.markdown("---")
 
+
+# --- RESILIENT MULTI-MODEL DISPATCHER ---
+def stream_ai_response(key: str, prompt: str, placeholder, status_box):
+  """Tries models sequentially. If one model hits a 429 quota limit, automatically switches to the next available model."""
+  genai.configure(api_key=key)
+
+  # Candidate models in order of preference
+  candidate_models = [
+      "models/gemma-4-26b-a4b-it",
+      "models/gemini-3.8-flash",
+      "models/gemma-2-27b-it",
+      "models/gemma-2-9b-it",
+  ]
+
+  # Dynamically append any other text-generation models discovered in this account
+  try:
+    for m in genai.list_models():
+      if (
+          "generateContent" in m.supported_generation_methods
+          and "1.5" not in m.name
+          and "2.5" not in m.name
+          and m.name not in candidate_models
+      ):
+        candidate_models.append(m.name)
+  except Exception:
+    pass
+
+  last_err = None
+  for model_name in candidate_models:
+    try:
+      display_name = model_name.replace("models/", "")
+      status_box.info(f"⚡ Generating assessment via {display_name}...")
+      model = genai.GenerativeModel(model_name)
+      response = model.generate_content(prompt, stream=True)
+
+      full_text = ""
+      for chunk in response:
+        if chunk.text:
+          full_text += chunk.text
+          placeholder.markdown(full_text)
+
+      return display_name
+    except Exception as e:
+      err_str = str(e)
+      last_err = e
+      # If 429 (Quota exceeded) or 404 (Not found), seamlessly try next model
+      if "429" in err_str or "404" in err_str:
+        continue
+      else:
+        raise e
+
+  raise last_err if last_err else RuntimeError("All available AI models busy.")
+
+
 # --- AI ADVISORY & GROUNDED AUDIT ENGINE ---
 tab_advisory, tab_letter, tab_faq = st.tabs([
     (
@@ -191,12 +222,9 @@ with tab_advisory:
       st.error("कृपया API Key दर्ज करें। / Please enter a valid Gemini API key.")
     else:
       status_box = st.empty()
-      status_box.info("⚡ Connecting to AI engine...")
+      report_box = st.empty()
       start_time = time.time()
       try:
-        model_name = get_best_model(api_key)
-        model = genai.GenerativeModel(model_name)
-
         quote_context = (
             f"Vendor Quoted Price: Rs. {vendor_quote}."
             if vendor_quote > 0
@@ -224,31 +252,13 @@ Provide these structured sections:
 3. Quote Audit & Fair Price Verification (Compare vendor quote against benchmark ~Rs. 60,000/kW. Flag non-DCR modules or inflation).
 4. Critical Safety & Technical Tips (Earthing pits, Lightning arrestor, ACDB/DCDB, Net meter).
 """
-        status_box.info(
-            f"⚡ Generating assessment via {model_name.replace('models/', '')}..."
+        used_model = stream_ai_response(
+            api_key, prompt, report_box, status_box
         )
-        try:
-          response = model.generate_content(prompt, stream=True)
-        except Exception as e:
-          if "429" in str(e):
-            status_box.warning("⏳ Free tier limit reached. Auto-waiting 10s...")
-            time.sleep(10)
-            response = model.generate_content(prompt, stream=True)
-          else:
-            raise e
-
-        status_box.empty()
-        report_placeholder = st.empty()
-        full_text = ""
-
-        for chunk in response:
-          if chunk.text:
-            full_text += chunk.text
-            report_placeholder.markdown(full_text)
-
         latency = round(time.time() - start_time, 2)
+        status_box.empty()
         st.success(
-            f"✅ Completed in {latency}s | Model: {model_name.replace('models/', '')} | API Cost: $0.00 (Free Tier) | Grounded in MNRE Guidelines"
+            f"✅ Completed in {latency}s | Engine: {used_model} | Cost: $0.00 (Free Tier) | Grounded in MNRE Guidelines"
         )
 
       except Exception as e:
@@ -267,11 +277,10 @@ with tab_letter:
     if not api_key:
       st.error("Please enter a valid Gemini API key.")
     else:
-      with st.spinner("Drafting official letter..."):
-        try:
-          model_name = get_best_model(api_key)
-          model = genai.GenerativeModel(model_name)
-          letter_prompt = f"""
+      status_box = st.empty()
+      letter_box = st.empty()
+      try:
+        letter_prompt = f"""
 Draft a formal letter requesting Solar Net-Metering Connection and Sanctioned Load Feasibility.
 Addressee: The Sub-Divisional Officer (SDO), Electricity Distribution Utility ({state}).
 Applicant Plant Sizing: {display_kw} kW on-grid rooftop solar under PM Surya Ghar Yojana.
@@ -279,14 +288,14 @@ Language: {'Hindi' if is_hindi else 'English'}.
 Begin directly with the formal letter. Do not include introductory conversational text.
 Include blank fields for Consumer Account Number, Meter Number, and Contact Info.
 """
-          letter_res = model.generate_content(letter_prompt)
-          st.text_area(
-              "Copy / Print Application Letter",
-              value=letter_res.text,
-              height=350,
-          )
-        except Exception as e:
-          st.error(f"Error generating letter: {str(e)}")
+        used_model = stream_ai_response(
+            api_key, letter_prompt, letter_box, status_box
+        )
+        status_box.empty()
+        st.success(f"✅ Drafted via {used_model}")
+      except Exception as e:
+        status_box.empty()
+        st.error(f"Error generating letter: {str(e)}")
 
 with tab_faq:
   user_q = st.text_input(
@@ -298,18 +307,21 @@ with tab_faq:
     if not api_key:
       st.error("Please enter a valid Gemini API key.")
     else:
-      with st.spinner("Searching official guidelines..."):
-        try:
-          model_name = get_best_model(api_key)
-          model = genai.GenerativeModel(model_name)
-          faq_prompt = f"""
+      status_box = st.empty()
+      faq_box = st.empty()
+      try:
+        faq_prompt = f"""
 You are the official PM Surya Ghar scheme query assistant.
 Answer this citizen question accurately and concisely in {lang}:
 Question: "{user_q}"
 Ensure your reply cites official MNRE rules (e.g., DCR module requirements, grid-connected vs off-grid subsidy eligibility, net metering).
 Begin directly with the answer.
 """
-          faq_res = model.generate_content(faq_prompt)
-          st.markdown(faq_res.text)
-        except Exception as e:
-          st.error(f"Error: {str(e)}")
+        used_model = stream_ai_response(
+            api_key, faq_prompt, faq_box, status_box
+        )
+        status_box.empty()
+        st.success(f"✅ Answered via {used_model}")
+      except Exception as e:
+        status_box.empty()
+        st.error(f"Error: {str(e)}")
