@@ -141,12 +141,9 @@ m4.metric(
 st.markdown("---")
 
 
-# --- RESILIENT MULTI-MODEL DISPATCHER ---
+# --- RESILIENT MULTI-MODEL STREAMING DISPATCHER ---
 def stream_ai_response(key: str, prompt: str, placeholder, status_box):
-  """Sequentially tries available models. If one hits quota limits (429),
-
-  it automatically falls back to the next model.
-  """
+  """Streams text in real time. Automatically falls back if a model hits rate limits."""
   genai.configure(api_key=key)
 
   candidate_models = [
@@ -182,7 +179,7 @@ def stream_ai_response(key: str, prompt: str, placeholder, status_box):
           full_text += chunk.text
           placeholder.markdown(full_text)
 
-      return display_name
+      return full_text, display_name
     except Exception as e:
       err_str = str(e)
       last_err = e
@@ -194,7 +191,7 @@ def stream_ai_response(key: str, prompt: str, placeholder, status_box):
   raise last_err if last_err else RuntimeError("All available AI models busy.")
 
 
-# --- AI ADVISORY & GROUNDED AUDIT ENGINE ---
+# --- APP TABS ---
 tab_advisory, tab_letter, tab_faq = st.tabs([
     (
         "📑 विशेषज्ञ रिपोर्ट एवं कोटेशन ऑडिट"
@@ -253,7 +250,7 @@ Provide these structured sections:
 3. Quote Audit & Fair Price Verification (Compare vendor quote against benchmark ~Rs. 60,000/kW. Flag non-DCR modules or inflation).
 4. Critical Safety & Technical Tips (Earthing pits, Lightning arrestor, ACDB/DCDB, Net meter).
 """
-        used_model = stream_ai_response(
+        _, used_model = stream_ai_response(
             api_key, prompt, report_box, status_box
         )
         latency = round(time.time() - start_time, 2)
@@ -280,85 +277,50 @@ with tab_letter:
       st.error("Please enter a valid Gemini API key.")
     else:
       status_box = st.empty()
+      letter_placeholder = st.empty()
       start_time = time.time()
       try:
-        genai.configure(api_key=api_key)
-        candidate_models = [
-            "models/gemini-3.8-flash",
-            "models/gemma-4-26b-a4b-it",
-            "models/gemma-2-27b-it",
-        ]
-
         if is_hindi:
           letter_prompt = f"""
-आप ऊर्जा मित्र हैं। डिस्कॉम के उप-मंडल अधिकारी (SDO), {state} को सोलर नेट-मीटरिंग और लोड स्वीकृति हेतु एक संक्षिप्त, सटीक और औपचारिक आवेदन पत्र लिखें।
-प्लांट क्षमता: {display_kw} kW ऑन-ग्रिड रूफटॉप सोलर (पीएम सूर्य घर योजना)।
+ऊर्जा मित्र के रूप में, बिजली वितरण निगम ({state}) के उप-मंडल अधिकारी (SDO) को पीएम सूर्य घर मुफ्त बिजली योजना के अंतर्गत {display_kw} kW ऑन-ग्रिड सोलर सिस्टम के लिए नेट-मीटरिंग और लोड स्वीकृति हेतु एक संपूर्ण और औपचारिक आवेदन पत्र लिखें।
 
-प्रारूप:
-दिनांक: [दिनांक]
-सेवा में, उप-मंडल अधिकारी (SDO)...
-विषय: नेट-मीटरिंग एवं ग्रिड कनेक्टिविटी हेतु आवेदन...
-महोदय...
-
-केवल और केवल अंतिम पत्र लिखें। कोई रूपरेखा या योजना नोट्स न लिखें।
+नियम:
+1. पत्र 'दिनांक: [दिनांक]' से शुरू करें।
+2. कोई रूपरेखा, बुलेट नोट्स या योजना बिंदु न लिखें।
+3. पूर्ण वाक्यों और औपचारिक पैराग्राफों में पूरा पत्र लिखें।
+4. बिजली बिल, आधार कार्ड और सिस्टम विवरण के अनुलग्नकों (Enclosures) की सूची शामिल करें।
 """
         else:
           letter_prompt = f"""
-You are UrjaMitra. Write a concise, professional, single-page formal application letter to the Sub-Divisional Officer (SDO), Electricity Distribution Utility ({state}).
-Request: Solar Net-Metering Connection and Sanctioned Load Feasibility under PM Surya Ghar Muft Bijli Yojana for a {display_kw} kW on-grid solar system.
+As UrjaMitra, write a complete, ready-to-print formal application letter addressed to the Sub-Divisional Officer (SDO), Electricity Distribution Utility ({state}) requesting technical feasibility and Net-Metering connection for a {display_kw} kW on-grid rooftop solar PV system under PM Surya Ghar Muft Bijli Yojana.
 
-Format:
-Date: [Insert Date]
-To, The Sub-Divisional Officer (SDO)...
-Subject: Application for Net-Metering Connection for {display_kw} kW Solar System...
-Respected Sir/Madam...
-
-Output strictly the final formal letter following this format. Do not write drafting outlines.
+STRICT INSTRUCTIONS:
+- Start immediately with 'Date: [Insert Date]'.
+- Do NOT output bullet plans, drafting notes, or checklists.
+- Write the complete letter text using formal paragraphs and full sentences.
+- Include placeholders for Consumer Account No, Meter No, Sanctioned Load, and Address.
+- End with formal sign-off and standard enclosures list.
 """
-
-        status_box.info("⚡ Drafting application letter...")
-        raw_text = ""
-        used_model = "AI Engine"
-
-        for model_name in candidate_models:
-          try:
-            model = genai.GenerativeModel(model_name)
-            res = model.generate_content(letter_prompt)
-            raw_text = res.text
-            used_model = model_name.replace("models/", "")
-            break
-          except Exception as e:
-            if "429" in str(e) or "404" in str(e):
-              continue
-            else:
-              raise e
-
-        # --- POST-PROCESSING FILTER (Removes scratchpads & outlines) ---
-        clean_text = raw_text
-        for anchor in ["Date:", "दिनांक:", "To,", "सेवा में,"]:
-          if anchor in clean_text:
-            clean_text = anchor + clean_text.split(anchor, 1)[1]
-            break
-
-        if clean_text.count("Date:") > 1:
-          clean_text = "Date:" + clean_text.split("Date:")[1]
-        elif clean_text.count("दिनांक:") > 1:
-          clean_text = "दिनांक:" + clean_text.split("दिनांक:")[1]
-
-        status_box.empty()
-        latency = round(time.time() - start_time, 2)
-        st.success(f"✅ Drafted via {used_model} in {latency}s")
-
-        st.text_area(
-            "📋 "
-            + (
-                "प्रिंट हेतु तैयार पत्र"
-                if is_hindi
-                else "Ready-to-Print Application Letter"
-            ),
-            value=clean_text.strip(),
-            height=380,
+        full_letter_text, used_model = stream_ai_response(
+            api_key, letter_prompt, letter_placeholder, status_box
         )
+
+        # Post-clean: ensures output starts cleanly at the formal header
+        clean_letter = full_letter_text
+        for anchor in ["Date:", "दिनांक:", "To,", "सेवा में,"]:
+          if anchor in clean_letter:
+            clean_letter = anchor + clean_letter.split(anchor, 1)[1]
+            break
+
+        letter_placeholder.markdown(clean_letter)
+        latency = round(time.time() - start_time, 2)
+        status_box.empty()
+        st.success(
+            f"✅ Drafted via {used_model} in {latency}s | Ready to print"
+        )
+
+        with st.expander("📋 " + ("कॉपी करने के लिए यहाँ क्लिक करें" if is_hindi else "Click here to Copy Plain Text")):
+          st.text_area("Letter Text", value=clean_letter.strip(), height=260)
 
       except Exception as e:
         status_box.empty()
@@ -385,7 +347,7 @@ Question: "{user_q}"
 Ensure your reply cites official MNRE rules (e.g., DCR module requirements, grid-connected vs off-grid subsidy eligibility, net metering).
 Begin directly with the answer.
 """
-        used_model = stream_ai_response(
+        _, used_model = stream_ai_response(
             api_key, faq_prompt, faq_box, status_box
         )
         status_box.empty()
