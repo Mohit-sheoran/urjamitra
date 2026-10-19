@@ -100,7 +100,6 @@ def get_best_model(key: str):
         for m in genai.list_models()
         if "generateContent" in m.supported_generation_methods
     ]
-    # Prefer faster flash models over heavier reasoning weights
     for m in models:
       if "flash" in m and "1.5" not in m and "2.5" not in m:
         return m
@@ -234,7 +233,6 @@ Provide these structured sections:
         report_placeholder = st.empty()
         full_text = ""
 
-        # Stream chunks to screen immediately
         for chunk in response:
           if chunk.text:
             full_text += chunk.text
@@ -303,4 +301,7 @@ Question: "{user_q}"
 Ensure your reply cites official MNRE rules (e.g., DCR module requirements, grid-connected vs off-grid subsidy eligibility, net metering).
 Begin directly with the answer.
 """
-          faq_res = model.generate
+          faq_res = model.generate_content(faq_prompt)
+          st.markdown(faq_res.text)
+        except Exception as e:
+          st.error(f"Error: {str(e)}")
