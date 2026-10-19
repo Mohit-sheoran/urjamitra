@@ -141,18 +141,20 @@ m4.metric(
 st.markdown("---")
 
 
-# --- RESILIENT MULTI-MODEL STREAMING DISPATCHER ---
+# --- RESILIENT MULTI-MODEL DISPATCHER ---
 def stream_ai_response(key: str, prompt: str, placeholder, status_box):
-  """Streams text in real time. Automatically falls back if a model hits rate limits."""
+  """Tries models sequentially. If one model hits a 429 quota limit, automatically switches to the next available model."""
   genai.configure(api_key=key)
 
+  # Candidate models in order of preference
   candidate_models = [
-      "models/gemini-3.8-flash",
       "models/gemma-4-26b-a4b-it",
+      "models/gemini-3.8-flash",
       "models/gemma-2-27b-it",
       "models/gemma-2-9b-it",
   ]
 
+  # Dynamically append any other text-generation models discovered in this account
   try:
     for m in genai.list_models():
       if (
@@ -179,10 +181,11 @@ def stream_ai_response(key: str, prompt: str, placeholder, status_box):
           full_text += chunk.text
           placeholder.markdown(full_text)
 
-      return full_text, display_name
+      return display_name
     except Exception as e:
       err_str = str(e)
       last_err = e
+      # If 429 (Quota exceeded) or 404 (Not found), seamlessly try next model
       if "429" in err_str or "404" in err_str:
         continue
       else:
@@ -191,7 +194,7 @@ def stream_ai_response(key: str, prompt: str, placeholder, status_box):
   raise last_err if last_err else RuntimeError("All available AI models busy.")
 
 
-# --- APP TABS ---
+# --- AI ADVISORY & GROUNDED AUDIT ENGINE ---
 tab_advisory, tab_letter, tab_faq = st.tabs([
     (
         "📑 विशेषज्ञ रिपोर्ट एवं कोटेशन ऑडिट"
@@ -206,7 +209,6 @@ tab_advisory, tab_letter, tab_faq = st.tabs([
     "❓ " + ("सौर सहायक से सवाल पूछें" if is_hindi else "Ask AI Assistant"),
 ])
 
-# --- TAB 1: DETAILED REPORT ---
 with tab_advisory:
   if st.button(
       "🚀 "
@@ -250,7 +252,7 @@ Provide these structured sections:
 3. Quote Audit & Fair Price Verification (Compare vendor quote against benchmark ~Rs. 60,000/kW. Flag non-DCR modules or inflation).
 4. Critical Safety & Technical Tips (Earthing pits, Lightning arrestor, ACDB/DCDB, Net meter).
 """
-        _, used_model = stream_ai_response(
+        used_model = stream_ai_response(
             api_key, prompt, report_box, status_box
         )
         latency = round(time.time() - start_time, 2)
@@ -263,7 +265,6 @@ Provide these structured sections:
         status_box.empty()
         st.error(f"Error calling AI API: {str(e)}")
 
-# --- TAB 2: DISCOM LETTER ---
 with tab_letter:
   st.info(
       "डिस्कॉम (SDO कार्यालय) के लिए औपचारिक नेट-मीटरिंग अनापत्ति आवेदन।"
@@ -277,56 +278,27 @@ with tab_letter:
       st.error("Please enter a valid Gemini API key.")
     else:
       status_box = st.empty()
-      letter_placeholder = st.empty()
+      letter_box = st.empty()
       start_time = time.time()
       try:
-        if is_hindi:
-          letter_prompt = f"""
-ऊर्जा मित्र के रूप में, बिजली वितरण निगम ({state}) के उप-मंडल अधिकारी (SDO) को पीएम सूर्य घर मुफ्त बिजली योजना के अंतर्गत {display_kw} kW ऑन-ग्रिड सोलर सिस्टम के लिए नेट-मीटरिंग और लोड स्वीकृति हेतु एक संपूर्ण और औपचारिक आवेदन पत्र लिखें।
-
-नियम:
-1. पत्र 'दिनांक: [दिनांक]' से शुरू करें।
-2. कोई रूपरेखा, बुलेट नोट्स या योजना बिंदु न लिखें।
-3. पूर्ण वाक्यों और औपचारिक पैराग्राफों में पूरा पत्र लिखें।
-4. बिजली बिल, आधार कार्ड और सिस्टम विवरण के अनुलग्नकों (Enclosures) की सूची शामिल करें।
+        letter_prompt = f"""
+Draft a formal letter requesting Solar Net-Metering Connection and Sanctioned Load Feasibility.
+Addressee: The Sub-Divisional Officer (SDO), Electricity Distribution Utility ({state}).
+Applicant Plant Sizing: {display_kw} kW on-grid rooftop solar under PM Surya Ghar Yojana.
+Language: {'Hindi' if is_hindi else 'English'}.
+Begin directly with the formal letter. Do not include introductory conversational text.
+Include blank fields for Consumer Account Number, Meter Number, and Contact Info.
 """
-        else:
-          letter_prompt = f"""
-As UrjaMitra, write a complete, ready-to-print formal application letter addressed to the Sub-Divisional Officer (SDO), Electricity Distribution Utility ({state}) requesting technical feasibility and Net-Metering connection for a {display_kw} kW on-grid rooftop solar PV system under PM Surya Ghar Muft Bijli Yojana.
-
-STRICT INSTRUCTIONS:
-- Start immediately with 'Date: [Insert Date]'.
-- Do NOT output bullet plans, drafting notes, or checklists.
-- Write the complete letter text using formal paragraphs and full sentences.
-- Include placeholders for Consumer Account No, Meter No, Sanctioned Load, and Address.
-- End with formal sign-off and standard enclosures list.
-"""
-        full_letter_text, used_model = stream_ai_response(
-            api_key, letter_prompt, letter_placeholder, status_box
+        used_model = stream_ai_response(
+            api_key, letter_prompt, letter_box, status_box
         )
-
-        # Post-clean: ensures output starts cleanly at the formal header
-        clean_letter = full_letter_text
-        for anchor in ["Date:", "दिनांक:", "To,", "सेवा में,"]:
-          if anchor in clean_letter:
-            clean_letter = anchor + clean_letter.split(anchor, 1)[1]
-            break
-
-        letter_placeholder.markdown(clean_letter)
         latency = round(time.time() - start_time, 2)
         status_box.empty()
-        st.success(
-            f"✅ Drafted via {used_model} in {latency}s | Ready to print"
-        )
-
-        with st.expander("📋 " + ("कॉपी करने के लिए यहाँ क्लिक करें" if is_hindi else "Click here to Copy Plain Text")):
-          st.text_area("Letter Text", value=clean_letter.strip(), height=260)
-
+        st.success(f"✅ Drafted via {used_model} in {latency}s")
       except Exception as e:
         status_box.empty()
         st.error(f"Error generating letter: {str(e)}")
 
-# --- TAB 3: AI ASSISTANT ---
 with tab_faq:
   user_q = st.text_input(
       "सौर ऊर्जा या योजना से संबंधित प्रश्न पूछें:"
@@ -347,7 +319,7 @@ Question: "{user_q}"
 Ensure your reply cites official MNRE rules (e.g., DCR module requirements, grid-connected vs off-grid subsidy eligibility, net metering).
 Begin directly with the answer.
 """
-        _, used_model = stream_ai_response(
+        used_model = stream_ai_response(
             api_key, faq_prompt, faq_box, status_box
         )
         status_box.empty()
