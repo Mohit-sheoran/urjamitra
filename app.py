@@ -141,34 +141,34 @@ m4.metric(
 st.markdown("---")
 
 
-# --- RESILIENT MULTI-MODEL DISPATCHER ---
-def stream_ai_response(key: str, prompt: str, placeholder, status_box):
-  """Tries models sequentially. If one model hits a 429 quota limit, automatically switches to the next available model."""
+# --- RESILIENT MODEL SELECTOR ---
+def get_candidate_models(key: str):
   genai.configure(api_key=key)
-
-  # Candidate models in order of preference
-  candidate_models = [
-      "models/gemma-4-26b-a4b-it",
+  candidates = [
       "models/gemini-3.8-flash",
+      "models/gemma-4-26b-a4b-it",
       "models/gemma-2-27b-it",
       "models/gemma-2-9b-it",
   ]
-
-  # Dynamically append any other text-generation models discovered in this account
   try:
     for m in genai.list_models():
       if (
           "generateContent" in m.supported_generation_methods
           and "1.5" not in m.name
           and "2.5" not in m.name
-          and m.name not in candidate_models
+          and m.name not in candidates
       ):
-        candidate_models.append(m.name)
+        candidates.append(m.name)
   except Exception:
     pass
+  return candidates
 
+
+# --- STREAMING DISPATCHER (FOR REPORTS & CHAT) ---
+def stream_ai_response(key: str, prompt: str, placeholder, status_box):
+  candidates = get_candidate_models(key)
   last_err = None
-  for model_name in candidate_models:
+  for model_name in candidates:
     try:
       display_name = model_name.replace("models/", "")
       status_box.info(f"⚡ Generating via {display_name}...")
@@ -185,16 +185,34 @@ def stream_ai_response(key: str, prompt: str, placeholder, status_box):
     except Exception as e:
       err_str = str(e)
       last_err = e
-      # If 429 (Quota exceeded) or 404 (Not found), seamlessly try next model
       if "429" in err_str or "404" in err_str:
         continue
       else:
         raise e
-
   raise last_err if last_err else RuntimeError("All available AI models busy.")
 
 
-# --- AI ADVISORY & GROUNDED AUDIT ENGINE ---
+# --- DIRECT DISPATCHER (FOR LETTER TAB) ---
+def generate_ai_text(key: str, prompt: str):
+  candidates = get_candidate_models(key)
+  last_err = None
+  for model_name in candidates:
+    try:
+      display_name = model_name.replace("models/", "")
+      model = genai.GenerativeModel(model_name)
+      res = model.generate_content(prompt)
+      return res.text, display_name
+    except Exception as e:
+      err_str = str(e)
+      last_err = e
+      if "429" in err_str or "404" in err_str:
+        continue
+      else:
+        raise e
+  raise last_err if last_err else RuntimeError("All available AI models busy.")
+
+
+# --- APP TABS ---
 tab_advisory, tab_letter, tab_faq = st.tabs([
     (
         "📑 विशेषज्ञ रिपोर्ट एवं कोटेशन ऑडिट"
@@ -209,6 +227,7 @@ tab_advisory, tab_letter, tab_faq = st.tabs([
     "❓ " + ("सौर सहायक से सवाल पूछें" if is_hindi else "Ask AI Assistant"),
 ])
 
+# --- TAB 1: DETAILED REPORT ---
 with tab_advisory:
   if st.button(
       "🚀 "
@@ -265,6 +284,7 @@ Provide these structured sections:
         status_box.empty()
         st.error(f"Error calling AI API: {str(e)}")
 
+# --- TAB 2: DISCOM LETTER ---
 with tab_letter:
   st.info(
       "डिस्कॉम (SDO कार्यालय) के लिए औपचारिक नेट-मीटरिंग अनापत्ति आवेदन।"
@@ -277,28 +297,74 @@ with tab_letter:
     if not api_key:
       st.error("Please enter a valid Gemini API key.")
     else:
-      status_box = st.empty()
-      letter_box = st.empty()
-      start_time = time.time()
-      try:
-        letter_prompt = f"""
-Draft a formal letter requesting Solar Net-Metering Connection and Sanctioned Load Feasibility.
-Addressee: The Sub-Divisional Officer (SDO), Electricity Distribution Utility ({state}).
-Applicant Plant Sizing: {display_kw} kW on-grid rooftop solar under PM Surya Ghar Yojana.
-Language: {'Hindi' if is_hindi else 'English'}.
-Begin directly with the formal letter. Do not include introductory conversational text.
-Include blank fields for Consumer Account Number, Meter Number, and Contact Info.
-"""
-        used_model = stream_ai_response(
-            api_key, letter_prompt, letter_box, status_box
-        )
-        latency = round(time.time() - start_time, 2)
-        status_box.empty()
-        st.success(f"✅ Drafted via {used_model} in {latency}s")
-      except Exception as e:
-        status_box.empty()
-        st.error(f"Error generating letter: {str(e)}")
+      with st.spinner(
+          "औपचारिक आवेदन पत्र तैयार किया जा रहा है... / Drafting official Discom letter..."
+      ):
+        start_time = time.time()
+        try:
+          if is_hindi:
+            letter_prompt = f"""
+पीएम सूर्य घर मुफ्त बिजली योजना के तहत {display_kw} kW सोलर रूफटॉप प्लांट के लिए निम्नलिखित औपचारिक आवेदन पत्र को पूरा करें।
+शुरुआत में कोई रूपरेखा, नोट्स या योजना बिंदु न लिखें। सीधे पत्र को जारी रखते हुए पूरा करें:
 
+दिनांक: [दिनांक दर्ज करें]
+सेवा में,
+उप-मंडल अधिकारी (SDO),
+बिजली वितरण निगम (DHBVN/UHBVN/DISCOM), {state}।
+
+विषय: {display_kw} kW सोलर रूफटॉप प्लांट हेतु नेट-मीटरिंग एवं ग्रिड कनेक्टिविटी स्वीकृति के संबंध में।
+
+महोदय,
+सविनय निवेदन है कि मैं अपने आवासीय परिसर पर पीएम सूर्य घर मुफ्त बिजली योजना के अंतर्गत {display_kw} kW क्षमता का ऑन-ग्रिड सोलर रूफटॉप सिस्टम स्थापित कर रहा हूँ।
+"""
+            expected_start = "दिनांक:"
+          else:
+            letter_prompt = f"""
+Complete the following formal application letter for a {display_kw} kW on-grid solar rooftop installation under PM Surya Ghar Muft Bijli Yojana in {state}.
+Do NOT output any planning outlines, scratchpads, or bullet notes. Continue and finish the letter directly:
+
+Date: [Insert Date]
+To,
+The Sub-Divisional Officer (SDO),
+Electricity Distribution Utility (DHBVN/UHBVN/DISCOM), {state}.
+
+Subject: Application for Sanctioned Load Feasibility and Net-Metering Connection for {display_kw} kW Solar System under PM Surya Ghar Yojana.
+
+Respected Sir/Madam,
+I am writing to formally request permission and technical feasibility approval for the installation of a {display_kw} kW on-grid rooftop solar PV system at my premises under the PM Surya Ghar Muft Bijli Yojana.
+"""
+            expected_start = "Date:"
+
+          raw_output, used_model = generate_ai_text(api_key, letter_prompt)
+
+          # --- PROGRAMMATIC SCRATCHPAD STRIPPER ---
+          # Keeps only content starting from the true formal letter header
+          clean_letter = raw_output
+          for anchor in [expected_start, "To,", "सेवा में,"]:
+            if anchor in clean_letter:
+              clean_letter = anchor + clean_letter.split(anchor, 1)[1]
+              break
+
+          latency = round(time.time() - start_time, 2)
+          st.success(f"✅ Drafted via {used_model} in {latency}s")
+
+          # Render the clean letter directly
+          st.markdown(clean_letter)
+
+          with st.expander(
+              "📋 "
+              + (
+                  "कॉपी करने के लिए यहाँ क्लिक करें"
+                  if is_hindi
+                  else "Click here to Copy Plain Text"
+              )
+          ):
+            st.text_area("Letter Text", value=clean_letter.strip(), height=280)
+
+        except Exception as e:
+          st.error(f"Error generating letter: {str(e)}")
+
+# --- TAB 3: AI ASSISTANT ---
 with tab_faq:
   user_q = st.text_input(
       "सौर ऊर्जा या योजना से संबंधित प्रश्न पूछें:"
