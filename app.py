@@ -278,49 +278,72 @@ with tab_letter:
       st.error("Please enter a valid Gemini API key.")
     else:
       status_box = st.empty()
-      letter_box = st.empty()
+      letter_placeholder = st.empty()
+      start_time = time.time()
       try:
-        letter_prompt = f"""
-Draft a formal net-metering application letter to the Sub-Divisional Officer (SDO) of the local electricity distribution utility in {state}.
-Plant Details: {display_kw} kW on-grid solar under PM Surya Ghar Muft Bijli Yojana.
-Language: {'Hindi' if is_hindi else 'English'}.
+        model_name = get_best_model(api_key)
+        model = genai.GenerativeModel(model_name)
 
-CRITICAL: Output ONLY the final formal letter text. Do NOT include planning notes, scratchpads, checkmarks, or bulleted drafting plans. Begin directly with 'Date: [Insert Date]'.
+        if is_hindi:
+          letter_prompt = f"""
+आप ऊर्जा मित्र हैं। डिस्कॉम के उप-मंडल अधिकारी (SDO), {state} को सोलर नेट-मीटरिंग और लोड स्वीकृति हेतु एक संक्षिप्त, सटीक और औपचारिक आवेदन पत्र लिखें।
+प्लांट क्षमता: {display_kw} kW ऑन-ग्रिड रूफटॉप सोलर (पीएम सूर्य घर योजना)।
+
+प्रारूप:
+दिनांक: [दिनांक]
+सेवा में, उप-मंडल अधिकारी (SDO)...
+विषय: नेट-मीटरिंग एवं ग्रिड कनेक्टिविटी हेतु आवेदन...
+महोदय...
+
+केवल और केवल ऊपर दिए गए प्रारूप में अंतिम पत्र लिखें। कोई रूपरेखा या अतिरिक्त टिप्पणी न लिखें।
 """
-        used_model = stream_ai_response(
-            api_key, letter_prompt, letter_box, status_box
+        else:
+          letter_prompt = f"""
+You are UrjaMitra. Write a concise, professional, single-page formal application letter to the Sub-Divisional Officer (SDO), Electricity Distribution Utility ({state}).
+Request: Solar Net-Metering Connection and Sanctioned Load Feasibility under PM Surya Ghar Muft Bijli Yojana for a {display_kw} kW on-grid solar system.
+
+Format:
+Date: [Insert Date]
+To, The Sub-Divisional Officer (SDO)...
+Subject: Application for Net-Metering Connection for {display_kw} kW Solar System...
+Respected Sir/Madam...
+
+Output strictly the final formal letter following this format.
+"""
+
+        status_box.info(
+            f"⚡ Drafting via {model_name.replace('models/', '')}..."
         )
+        response = model.generate_content(letter_prompt)
+        raw_text = response.text
+
+        # --- SMART POST-PROCESSING FILTER ---
+        # Strips out any accidental outline/scratchpad generated before the letter header
+        clean_text = raw_text
+        for anchor in ["Date:", "दिनांक:", "To,", "सेवा में,"]:
+          if anchor in clean_text:
+            clean_text = anchor + clean_text.split(anchor, 1)[1]
+            break
+
+        # Remove duplicate letters if the model generated a second header
+        if clean_text.count("Date:") > 1:
+          clean_text = "Date:" + clean_text.split("Date:")[1]
+        elif clean_text.count("दिनांक:") > 1:
+          clean_text = "दिनांक:" + clean_text.split("दिनांक:")[1]
+
         status_box.empty()
-        st.success(f"✅ Drafted via {used_model}")
+        latency = round(time.time() - start_time, 2)
+        st.success(f"✅ Drafted in {latency}s | Ready to copy and print")
+
+        # Display in a clean text area for easy copying
+        st.text_area(
+            "📋 Ready-to-Print Letter"
+            if not is_hindi
+            else "📋 प्रिंट हेतु तैयार पत्र",
+            value=clean_text.strip(),
+            height=380,
+        )
+
       except Exception as e:
         status_box.empty()
         st.error(f"Error generating letter: {str(e)}")
-
-with tab_faq:
-  user_q = st.text_input(
-      "सौर ऊर्जा या योजना से संबंधित प्रश्न पूछें:"
-      if is_hindi
-      else "Ask any question regarding solar subsidies or installation:"
-  )
-  if st.button("उत्तर प्राप्त करें" if is_hindi else "Get Answer") and user_q:
-    if not api_key:
-      st.error("Please enter a valid Gemini API key.")
-    else:
-      status_box = st.empty()
-      faq_box = st.empty()
-      try:
-        faq_prompt = f"""
-You are the official PM Surya Ghar scheme query assistant.
-Answer this citizen question accurately and concisely in {lang}:
-Question: "{user_q}"
-Ensure your reply cites official MNRE rules (e.g., DCR module requirements, grid-connected vs off-grid subsidy eligibility, net metering).
-Begin directly with the answer.
-"""
-        used_model = stream_ai_response(
-            api_key, faq_prompt, faq_box, status_box
-        )
-        status_box.empty()
-        st.success(f"✅ Answered via {used_model}")
-      except Exception as e:
-        status_box.empty()
-        st.error(f"Error: {str(e)}")
