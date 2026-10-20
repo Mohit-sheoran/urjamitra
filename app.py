@@ -2,35 +2,274 @@ import os
 import re
 import time
 import google.generativeai as genai
+import pandas as pd
+from PIL import Image
 import streamlit as st
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="UrjaMitra | PM Surya Ghar Copilot",
+    page_title="UrjaMitra | National Solar & PM-KUSUM Copilot",
     page_icon="☀️",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
+
+# --- DESIGNER CUSTOM CSS (SOLAR-TECH PALETTE) ---
+st.markdown(
+    """
+<style>
+    /* Global Background & Typography */
+    .stApp {
+        background: linear-gradient(180deg, #F8FAFC 0%, #EFF6FF 100%);
+        color: #0F172A;
+    }
+    
+    /* Hero Banner Styling */
+    .hero-container {
+        background: linear-gradient(135deg, #0F172A 0%, #1E3A8A 60%, #047857 100%);
+        padding: 28px 32px;
+        border-radius: 18px;
+        color: #FFFFFF;
+        margin-bottom: 24px;
+        box-shadow: 0 12px 30px -10px rgba(15, 23, 42, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .hero-badge {
+        background: rgba(245, 158, 11, 0.2);
+        border: 1px solid #F59E0B;
+        color: #FCD34D;
+        padding: 4px 12px;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        display: inline-block;
+        margin-bottom: 10px;
+    }
+    .hero-title {
+        font-size: 2.3rem;
+        font-weight: 800;
+        margin: 0;
+        letter-spacing: -0.5px;
+        color: #FFFFFF;
+    }
+    .hero-subtitle {
+        font-size: 1.02rem;
+        color: #E2E8F0;
+        margin-top: 6px;
+        font-weight: 400;
+    }
+
+    /* Custom KPI Metric Cards */
+    .kpi-card {
+        background: #FFFFFF;
+        padding: 20px 22px;
+        border-radius: 16px;
+        box-shadow: 0 4px 15px rgba(15, 23, 42, 0.05);
+        border: 1px solid #E2E8F0;
+        border-top: 5px solid #F59E0B;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        height: 100%;
+    }
+    .kpi-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.09);
+    }
+    .kpi-card.green { border-top-color: #10B981; }
+    .kpi-card.blue { border-top-color: #3B82F6; }
+    .kpi-card.purple { border-top-color: #8B5CF6; }
+
+    .kpi-title {
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: #64748B;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        margin-bottom: 6px;
+    }
+    .kpi-value {
+        font-size: 1.9rem;
+        font-weight: 800;
+        color: #0F172A;
+        margin: 0;
+        line-height: 1.2;
+    }
+    .kpi-sub {
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #059669;
+        margin-top: 8px;
+    }
+
+    /* Section Containers */
+    .info-strip {
+        background: #FFFFFF;
+        border-left: 5px solid #0284C7;
+        padding: 14px 18px;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        margin-bottom: 18px;
+        font-size: 0.92rem;
+    }
+
+    /* Primary Action Buttons */
+    div.stButton > button {
+        background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 0.65rem 1.4rem;
+        font-weight: 700;
+        font-size: 0.98rem;
+        box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
+        transition: all 0.2s ease;
+        width: 100%;
+    }
+    div.stButton > button:hover {
+        background: linear-gradient(135deg, #047857 0%, #065F46 100%);
+        border: none;
+        color: #FFFFFF;
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgba(5, 150, 105, 0.35);
+    }
+
+    /* Tabs Polish */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+        background-color: #E2E8F0;
+        padding: 6px;
+        border-radius: 12px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px;
+        padding: 10px 18px;
+        font-weight: 700;
+        background-color: transparent;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+# --- STATE-SPECIFIC DISCOM & SOLAR IRRADIANCE DATABASE ---
+STATE_DB = {
+    "Haryana": {
+        "discom": "DHBVN / UHBVN",
+        "regulator": "HERC",
+        "agri_agency": "HAREDA",
+        "tariff": 6.75,
+        "insolation": 4.6,
+        "kusum_state_sub": 45,  # 30% Central + 45% State = 75% Total in Haryana
+    },
+    "Rajasthan": {
+        "discom": "JVVNL / AVVNL / JdVVNL",
+        "regulator": "RERC",
+        "agri_agency": "RRECL",
+        "tariff": 7.50,
+        "insolation": 5.1,
+        "kusum_state_sub": 30,
+    },
+    "Uttar Pradesh": {
+        "discom": "UPPCL (PVVNL / DVVNL / MVVNL)",
+        "regulator": "UPERC",
+        "agri_agency": "UPNEDA",
+        "tariff": 7.00,
+        "insolation": 4.5,
+        "kusum_state_sub": 30,
+    },
+    "Punjab": {
+        "discom": "PSPCL",
+        "regulator": "PSERC",
+        "agri_agency": "PEDA",
+        "tariff": 6.80,
+        "insolation": 4.5,
+        "kusum_state_sub": 30,
+    },
+    "Delhi": {
+        "discom": "BSES Rajdhani / BSES Yamuna / Tata Power-DDL",
+        "regulator": "DERC",
+        "agri_agency": "EE&REM Delhi",
+        "tariff": 8.00,
+        "insolation": 4.5,
+        "kusum_state_sub": 30,
+    },
+    "Maharashtra": {
+        "discom": "MSEDCL (Mahavitaran)",
+        "regulator": "MERC",
+        "agri_agency": "MEDA",
+        "tariff": 8.50,
+        "insolation": 4.7,
+        "kusum_state_sub": 30,
+    },
+    "Other": {
+        "discom": "State DISCOM",
+        "regulator": "SERC",
+        "agri_agency": "SNA / MNRE",
+        "tariff": 7.00,
+        "insolation": 4.5,
+        "kusum_state_sub": 30,
+    },
+}
 
 # --- RETRIEVE SECURE API KEY ---
 configured_key = st.secrets.get("GEMINI_API_KEY", "")
 
-# --- APP HEADER & LANGUAGE SELECTION ---
-col_head, col_lang = st.columns([3, 1])
-with col_head:
-  st.title("☀️ UrjaMitra (ऊर्जा मित्र)")
-  st.caption("AI-Powered Solar Sizing, PM Surya Ghar Subsidy & Fair-Price Audit")
-
+# --- TOP BAR: LANGUAGE SELECTOR ---
+col_spacer, col_lang = st.columns([4, 1])
 with col_lang:
-  lang = st.selectbox("🌐 भाषा / Language", ["English", "हिंदी (Hindi)"])
+  lang = st.selectbox(
+      "🌐 भाषा / Language",
+      ["English", "हिंदी (Hindi)"],
+      label_visibility="collapsed",
+  )
 
 is_hindi = lang == "हिंदी (Hindi)"
 
+# --- HERO BANNER ---
+if is_hindi:
+  st.markdown(
+      """
+    <div class="hero-container">
+        <div class="hero-badge">🇮🇳 एमएनआरई (MNRE) एवं पीएम-कुसुम मानकों पर आधारित</div>
+        <h1 class="hero-title">☀️ ऊर्जा मित्र (UrjaMitra)</h1>
+        <p class="hero-subtitle">एआई-संचालित सोलर साइज़िंग, पीएम सूर्य घर एवं पीएम-कुसुम सब्सिडी, मल्टीमॉडल कोटेशन ऑडिट और डिस्कॉम नेट-मीटरिंग सहायक</p>
+    </div>
+    """,
+      unsafe_allow_html=True,
+  )
+else:
+  st.markdown(
+      """
+    <div class="hero-container">
+        <div class="hero-badge">🇮🇳 Grounded in Official MNRE & State Discom Regulations</div>
+        <h1 class="hero-title">☀️ UrjaMitra (ऊर्जा मित्र)</h1>
+        <p class="hero-subtitle">Next-Gen Solar Engineering Copilot • PM Surya Ghar & PM-KUSUM Sizing • Multimodal Quote Auditor • Discom Legal Drafter</p>
+    </div>
+    """,
+      unsafe_allow_html=True,
+  )
+
 # --- SIDEBAR: USER INPUTS ---
-st.sidebar.header("⚙️ " + ("उपभोक्ता विवरण" if is_hindi else "Consumer Details"))
+st.sidebar.markdown(
+    "### ⚙️ " + ("उपभोक्ता प्रोफ़ाइल" if is_hindi else "Consumer Profile")
+)
 
 if configured_key:
   api_key = configured_key
-  st.sidebar.success("🔑 API Key Connected Securely")
+  st.sidebar.success(
+      "🔑 "
+      + (
+          "API Key सुरक्षित रूप से जुड़ी है"
+          if is_hindi
+          else "API Key Connected Securely"
+      )
+  )
 else:
   api_key = st.sidebar.text_input(
       "🔑 Enter Gemini API Key",
@@ -38,49 +277,92 @@ else:
       help="Add GEMINI_API_KEY to Streamlit Secrets or enter here.",
   )
 
-monthly_bill = st.sidebar.number_input(
-    "औसत मासिक बिजली बिल (₹)" if is_hindi else "Avg. Monthly Power Bill (₹)",
-    min_value=300,
-    max_value=100000,
-    value=2500,
-    step=100,
-)
+state = st.sidebar.selectbox("📍 राज्य / State", list(STATE_DB.keys()))
+state_info = STATE_DB[state]
 
-roof_area = st.sidebar.number_input(
-    "उपलब्ध छत का क्षेत्रफल (वर्ग फुट)"
+mode_options = (
+    ["🏠 घरेलू रूफटॉप (PM Surya Ghar)", "🌾 कृषि सोलर पंप (PM-KUSUM)"]
     if is_hindi
-    else "Available Roof Area (sq. ft.)",
-    min_value=50,
-    max_value=20000,
-    value=350,
-    step=50,
+    else [
+        "🏠 Residential Rooftop (PM Surya Ghar)",
+        "🌾 Agricultural Pump (PM-KUSUM)",
+    ]
 )
-
-state = st.sidebar.selectbox(
-    "राज्य / State",
-    [
-        "Haryana",
-        "Delhi",
-        "Uttar Pradesh",
-        "Rajasthan",
-        "Punjab",
-        "Maharashtra",
-        "Other",
-    ],
+selected_mode = st.sidebar.radio(
+    "⚡ कनेक्शन श्रेणी / Sector Mode", mode_options
 )
-
-consumer_type = st.sidebar.radio(
-    "कनेक्शन प्रकार" if is_hindi else "Connection Type",
-    [
-        "Residential (घरेलू)" if is_hindi else "Residential",
-        "Agricultural (कृषि)" if is_hindi else "Agricultural",
-    ],
-)
+is_agri = "PM-KUSUM" in selected_mode
 
 st.sidebar.markdown("---")
-st.sidebar.subheader(
-    "🔍 "
-    + ("विक्रेता कोटेशन ऑडिट (वैकल्पिक)" if is_hindi else "Quote Audit (Optional)")
+
+# Dynamic Sidebar Inputs based on Mode
+if not is_agri:
+  st.sidebar.markdown(
+      "#### 🏠 " + ("घरेलू विवरण" if is_hindi else "Residential Parameters")
+  )
+  monthly_bill = st.sidebar.number_input(
+      "औसत मासिक बिजली बिल (₹)" if is_hindi else "Avg. Monthly Power Bill (₹)",
+      min_value=300,
+      max_value=100000,
+      value=2500,
+      step=100,
+  )
+  roof_area = st.sidebar.number_input(
+      "उपलब्ध छत क्षेत्रफल (वर्ग फुट)"
+      if is_hindi
+      else "Shadow-Free Roof Area (sq. ft.)",
+      min_value=50,
+      max_value=20000,
+      value=350,
+      step=50,
+  )
+  sanctioned_load = st.sidebar.number_input(
+      "मौजूदा स्वीकृत लोड (kW)" if is_hindi else "Existing Sanctioned Load (kW)",
+      min_value=1.0,
+      max_value=50.0,
+      value=2.0,
+      step=1.0,
+  )
+else:
+  st.sidebar.markdown(
+      "#### 🌾 "
+      + ("कृषि एवं सिंचाई विवरण" if is_hindi else "Agricultural & Pump Specs")
+  )
+  land_acres = st.sidebar.number_input(
+      "सिंचित भूमि (एकड़)" if is_hindi else "Irrigated Farmland (Acres)",
+      min_value=1.0,
+      max_value=100.0,
+      value=5.0,
+      step=1.0,
+  )
+  water_depth = st.sidebar.slider(
+      "भूजल स्तर की गहराई (फीट)" if is_hindi else "Water Table Depth (Feet)",
+      min_value=20,
+      max_value=400,
+      value=120,
+      step=10,
+  )
+  pump_type = st.sidebar.selectbox(
+      "पंप प्रकार / Pump Type",
+      [
+          "Submersible DC (सबमर्सिबल डीसी)",
+          "Submersible AC (सबमर्सिबल एसी)",
+          "Surface Mono-block (सरफेस पंप)",
+      ],
+  )
+  monthly_diesel_spend = st.sidebar.number_input(
+      "मासिक डीजल/बिजली खर्च (₹)"
+      if is_hindi
+      else "Monthly Diesel/Power Spend (₹)",
+      min_value=1000,
+      max_value=100000,
+      value=6000,
+      step=500,
+  )
+
+st.sidebar.markdown("---")
+st.sidebar.markdown(
+    "#### 🔍 " + ("विक्रेता कोटेशन ऑडिट" if is_hindi else "Vendor Quote & OCR")
 )
 vendor_quote = st.sidebar.number_input(
     "विक्रेता द्वारा मांगा गया कुल मूल्य (₹)"
@@ -91,58 +373,153 @@ vendor_quote = st.sidebar.number_input(
     step=5000,
 )
 
-# --- DETERMINISTIC SOLAR & SUBSIDY CALCULATION ENGINE ---
-unit_rate = 7.0
-est_units_per_month = monthly_bill / unit_rate
-calculated_kw = round(est_units_per_month / 120.0, 1)
+uploaded_file = st.sidebar.file_uploader(
+    "📸 कोटेशन या बिल का फोटो अपलोड करें"
+    if is_hindi
+    else "📸 Upload Quote / Bill Image (Optional)",
+    type=["png", "jpg", "jpeg"],
+)
 
-max_kw_by_roof = round(roof_area / 100.0, 1)
-recommended_kw = max(1.0, min(calculated_kw, max_kw_by_roof))
+# --- DETERMINISTIC ENGINEERING & SUBSIDY ENGINE ---
+if not is_agri:
+  # RESIDENTIAL: PM SURYA GHAR MUFT BIJLI YOJANA
+  unit_rate = state_info["tariff"]
+  daily_gen_per_kw = state_info["insolation"]
+  est_monthly_units = monthly_bill / unit_rate
+  req_kw = est_monthly_units / (daily_gen_per_kw * 30)
 
-# MNRE PM Surya Ghar Subsidy slabs
-if recommended_kw < 1.5:
-  subsidy_amount = 30000
-  display_kw = 1
-elif recommended_kw < 2.5:
-  subsidy_amount = 60000
-  display_kw = 2
+  max_kw_by_roof = roof_area / 95.0
+  raw_kw = max(1.0, min(req_kw, max_kw_by_roof))
+
+  if raw_kw < 1.5:
+    display_kw = 1
+    subsidy_amount = 30000
+  elif raw_kw < 2.5:
+    display_kw = 2
+    subsidy_amount = 60000
+  else:
+    display_kw = min(10, int(round(raw_kw)))
+    subsidy_amount = 78000  # Capped at 3kW slab per MNRE rules
+
+  bench_gross_cost = display_kw * 58000
+  net_estimated_cost = max(0, bench_gross_cost - subsidy_amount)
+  annual_units = round(display_kw * daily_gen_per_kw * 365)
+  annual_savings = round(annual_units * unit_rate)
+  payback_years = (
+      round(net_estimated_cost / annual_savings, 1) if annual_savings > 0 else 0
+  )
+  co2_offset_tons = round(annual_units * 0.82 / 1000, 1)
+
+  capacity_label = f"{display_kw} kW Rooftop"
+  capacity_sub = f"Generates ~{round(display_kw * daily_gen_per_kw)} Units/Day"
+  subsidy_sub = "Central MNRE Direct DBT"
+  scheme_name = "PM Surya Ghar Muft Bijli Yojana"
+
 else:
-  subsidy_amount = 78000
-  display_kw = int(recommended_kw)
+  # AGRICULTURAL: PM-KUSUM (SOLAR WATER PUMP)
+  # Calculate required HP from depth and acreage
+  if water_depth > 200 or land_acres > 10:
+    recommended_hp = 10
+    solar_kw = 10.0
+    bench_gross_cost = 460000
+  elif water_depth > 120 or land_acres > 6:
+    recommended_hp = 7.5
+    solar_kw = 7.5
+    bench_gross_cost = 345000
+  elif water_depth > 60 or land_acres > 3:
+    recommended_hp = 5
+    solar_kw = 5.0
+    bench_gross_cost = 240000
+  else:
+    recommended_hp = 3
+    solar_kw = 3.0
+    bench_gross_cost = 155000
 
-bench_gross_cost = display_kw * 60000
-net_estimated_cost = max(0, bench_gross_cost - subsidy_amount)
-annual_savings = round(display_kw * 4 * 365 * unit_rate)
-payback_years = (
-    round(net_estimated_cost / annual_savings, 1) if annual_savings > 0 else 0
+  display_kw = solar_kw
+  total_sub_pct = 30 + state_info["kusum_state_sub"]  # Central 30% + State %
+  subsidy_amount = round(bench_gross_cost * (total_sub_pct / 100.0))
+  net_estimated_cost = max(0, bench_gross_cost - subsidy_amount)
+  annual_savings = round(
+      monthly_diesel_spend * 10
+  )  # 10 active cropping months
+  payback_years = (
+      round(net_estimated_cost / annual_savings, 1) if annual_savings > 0 else 0
+  )
+  co2_offset_tons = round(recommended_hp * 1.4, 1)
+
+  capacity_label = f"{recommended_hp} HP ({solar_kw} kW)"
+  capacity_sub = f"Sufficient for {land_acres} Acres @ {water_depth}ft"
+  subsidy_sub = f"{total_sub_pct}% Subsidy ({state_info['agri_agency']})"
+  scheme_name = f"PM-KUSUM ({state_info['agri_agency']})"
+
+# --- STATE REGULATORY STRIP ---
+st.markdown(
+    f"""
+<div class="info-strip">
+    <b>🏛️ {"सक्रिय नियामक क्षेत्र" if is_hindi else "Active Jurisdiction"}:</b> {state} &nbsp;|&nbsp;
+    <b>⚡ {"डिस्कॉम" if is_hindi else "Utility"}:</b> {state_info['discom']} ({state_info['regulator']}) &nbsp;|&nbsp;
+    <b>☀️ {"सौर विकिरण" if is_hindi else "Solar Insolation"}:</b> {state_info['insolation']} kWh/kW/day &nbsp;|&nbsp;
+    <b>📜 {"योजना" if is_hindi else "Active Scheme"}:</b> {scheme_name}
+</div>
+""",
+    unsafe_allow_html=True,
 )
 
-# --- METRIC CARDS DISPLAY ---
-st.subheader(
-    "📊 " + ("सौर प्रणाली का आकलन" if is_hindi else "Solar Sizing & Economics")
-)
-m1, m2, m3, m4 = st.columns(4)
+# --- DESIGNER KPI CARDS ---
+k1, k2, k3, k4 = st.columns(4)
 
-m1.metric(
-    "सुझाया गया प्लांट" if is_hindi else "Recommended Plant", f"{display_kw} kW"
-)
-m2.metric(
-    "सरकारी सब्सिडी" if is_hindi else "PM Surya Ghar Subsidy",
-    f"₹{subsidy_amount:,}",
-)
-m3.metric(
-    "अनुमानित शुद्ध लागत" if is_hindi else "Net Estimated Cost",
-    f"₹{net_estimated_cost:,}",
-)
-m4.metric(
-    "अनुमानित पेबैक" if is_hindi else "Estimated Payback",
-    f"{payback_years} Years",
-)
+with k1:
+  st.markdown(
+      f"""
+    <div class="kpi-card">
+        <div class="kpi-title">{"सुझाई गई क्षमता" if is_hindi else "Recommended System"}</div>
+        <div class="kpi-value">{capacity_label}</div>
+        <div class="kpi-sub">⚡ {capacity_sub}</div>
+    </div>
+    """,
+      unsafe_allow_html=True,
+  )
 
-st.markdown("---")
+with k2:
+  st.markdown(
+      f"""
+    <div class="kpi-card green">
+        <div class="kpi-title">{"कुल सरकारी सब्सिडी" if is_hindi else "Eligible Govt Subsidy"}</div>
+        <div class="kpi-value">₹{subsidy_amount:,}</div>
+        <div class="kpi-sub">🏛️ {subsidy_sub}</div>
+    </div>
+    """,
+      unsafe_allow_html=True,
+  )
+
+with k3:
+  st.markdown(
+      f"""
+    <div class="kpi-card blue">
+        <div class="kpi-title">{"आपकी शुद्ध लागत" if is_hindi else "Net Citizen Investment"}</div>
+        <div class="kpi-value">₹{net_estimated_cost:,}</div>
+        <div class="kpi-sub">💰 Benchmark Gross: ₹{bench_gross_cost:,}</div>
+    </div>
+    """,
+      unsafe_allow_html=True,
+  )
+
+with k4:
+  st.markdown(
+      f"""
+    <div class="kpi-card purple">
+        <div class="kpi-title">{"लागत वसूली समय" if is_hindi else "Payback & Eco Impact"}</div>
+        <div class="kpi-value">{payback_years} {"वर्ष" if is_hindi else "Years"}</div>
+        <div class="kpi-sub">🌱 Saves ₹{annual_savings:,}/yr • {co2_offset_tons}T CO₂</div>
+    </div>
+    """,
+      unsafe_allow_html=True,
+  )
+
+st.write("")
 
 
-# --- RESILIENT MODEL SELECTOR ---
+# --- RESILIENT AI MODEL SELECTOR & DISPATCHERS ---
 def get_candidate_models(key: str):
   genai.configure(api_key=key)
   candidates = [
@@ -165,16 +542,19 @@ def get_candidate_models(key: str):
   return candidates
 
 
-# --- STREAMING DISPATCHER (REPORTS & FAQ) ---
-def stream_ai_response(key: str, prompt: str, placeholder, status_box):
+def stream_ai_response(
+    key: str, prompt, placeholder, status_box, pil_image=None
+):
   candidates = get_candidate_models(key)
   last_err = None
   for model_name in candidates:
     try:
       display_name = model_name.replace("models/", "")
-      status_box.info(f"⚡ Generating via {display_name}...")
+      status_box.info(f"⚡ AI Engine ({display_name}) analyzing...")
       model = genai.GenerativeModel(model_name)
-      response = model.generate_content(prompt, stream=True)
+
+      content_payload = [prompt, pil_image] if pil_image is not None else prompt
+      response = model.generate_content(content_payload, stream=True)
 
       full_text = ""
       for chunk in response:
@@ -182,18 +562,34 @@ def stream_ai_response(key: str, prompt: str, placeholder, status_box):
           full_text += chunk.text
           placeholder.markdown(full_text)
 
-      return display_name
+      return full_text, display_name
     except Exception as e:
       err_str = str(e)
       last_err = e
-      if "429" in err_str or "404" in err_str:
+      # If multimodal fails on a text-only Gemma model or hits 429 quota, try next or fallback to text
+      if (
+          "429" in err_str
+          or "404" in err_str
+          or "image" in err_str.lower()
+          or "multimodal" in err_str.lower()
+      ):
+        if pil_image is not None and "gemma" in model_name:
+          try:
+            response = model.generate_content(prompt, stream=True)
+            full_text = ""
+            for chunk in response:
+              if chunk.text:
+                full_text += chunk.text
+                placeholder.markdown(full_text)
+            return full_text, display_name
+          except Exception:
+            continue
         continue
       else:
         raise e
   raise last_err if last_err else RuntimeError("All available AI models busy.")
 
 
-# --- DIRECT DISPATCHER (LETTER TAB) ---
 def generate_ai_text(key: str, prompt: str):
   candidates = get_candidate_models(key)
   last_err = None
@@ -213,17 +609,13 @@ def generate_ai_text(key: str, prompt: str):
   raise last_err if last_err else RuntimeError("All available AI models busy.")
 
 
-# --- ROBUST LETTER PARSER (STRIPS SCRATCHPAD NOTES) ---
 def extract_clean_letter(raw_text: str) -> str:
-  # 1. Search for all blocks enclosed in <LETTER>...</LETTER>
   matches = re.findall(r"<LETTER>([\s\S]*?)</LETTER>", raw_text, re.IGNORECASE)
   if matches:
-    # Pick the longest block to ensure it's the actual letter (avoids single-word collisions)
     longest = max(matches, key=len).strip()
     if len(longest) > 150:
       return longest
 
-  # 2. Check for an unclosed <LETTER> tag
   if "<LETTER>" in raw_text or "<letter>" in raw_text:
     parts = re.split(r"<LETTER>", raw_text, flags=re.IGNORECASE)
     last_part = parts[-1]
@@ -234,14 +626,12 @@ def extract_clean_letter(raw_text: str) -> str:
     if len(clean) > 150:
       return clean
 
-  # 3. Fallback: Parse line-by-line and drop bulleted scratchpads
   lines = raw_text.splitlines()
   letter_lines = []
   capturing = False
   for line in lines:
     stripped = line.strip()
     if not capturing:
-      # Start capturing only when reaching formal header lines that are not bullet points
       if not (
           stripped.startswith("*")
           or stripped.startswith("-")
@@ -254,7 +644,6 @@ def extract_clean_letter(raw_text: str) -> str:
             or stripped.startswith("सेवा में,")
             or (stripped.startswith("Date:") and len(stripped) < 40)
             or (stripped.startswith("दिनांक:") and len(stripped) < 40)
-            or stripped.startswith("From,")
         ):
           capturing = True
           letter_lines.append(line)
@@ -263,33 +652,68 @@ def extract_clean_letter(raw_text: str) -> str:
 
   if len(letter_lines) >= 8:
     return "\n".join(letter_lines).strip()
-
   return raw_text.strip()
 
 
-# --- APP TABS ---
-tab_advisory, tab_letter, tab_faq = st.tabs([
+# --- MAIN NAVIGATION TABS ---
+tab_advisory, tab_roi, tab_letter, tab_faq = st.tabs([
     (
-        "📑 विशेषज्ञ रिपोर्ट एवं कोटेशन ऑडिट"
+        "📑 एआई विशेषज्ञ ऑडिट एवं रिपोर्ट"
         if is_hindi
-        else "📑 Expert Report & Quote Audit"
+        else "📑 AI Expert Report & Quote Audit"
     ),
     (
-        "✉️ डिस्कॉम नेट-मीटरिंग आवेदन पत्र"
+        "📈 25-वर्षीय बचत एवं इंजीनियरिंग BoM"
         if is_hindi
-        else "✉️ Discom Application Letter"
+        else "📈 25-Year ROI & Engineering BoM"
     ),
-    "❓ " + ("सौर सहायक से सवाल पूछें" if is_hindi else "Ask AI Assistant"),
+    (
+        "✉️ आधिकारिक आवेदन पत्र (SDO/HAREDA)"
+        if is_hindi
+        else "✉️ Official SDO / KUSUM Application"
+    ),
+    "💬 " + ("सौर सहायक (AI Q&A)" if is_hindi else "Interactive Solar Copilot"),
 ])
 
-# --- TAB 1: DETAILED REPORT ---
+# --- TAB 1: AI REPORT & MULTIMODAL QUOTE AUDIT ---
 with tab_advisory:
+  col_info, col_action = st.columns([3, 1])
+  with col_info:
+    if uploaded_file is not None:
+      st.success(
+          "📸 "
+          + (
+              "कोटेशन/बिल इमेज अपलोड हो गई है! एआई इसका विज़न ऑडिट करेगा।"
+              if is_hindi
+              else "Document image attached! Multimodal Vision Audit active."
+          )
+      )
+    elif vendor_quote > 0:
+      diff = vendor_quote - bench_gross_cost
+      if diff > 15000:
+        st.warning(
+            f"⚠️ Installer quote (₹{vendor_quote:,}) is ₹{diff:,} above the fair MNRE benchmark (₹{bench_gross_cost:,}). Click Generate for negotiation points."
+        )
+      else:
+        st.info(
+            f"✅ Installer quote (₹{vendor_quote:,}) is within fair market benchmark (₹{bench_gross_cost:,})."
+        )
+    else:
+      st.write(
+          "💡 "
+          + (
+              "संपूर्ण तकनीकी व्यवहार्यता, सब्सिडी प्रक्रिया और सुरक्षा ऑडिट के लिए नीचे क्लिक करें।"
+              if is_hindi
+              else "Generate a customized engineering feasibility study, subsidy roadmap, and vendor price audit."
+          )
+      )
+
   if st.button(
       "🚀 "
       + (
-          "विस्तृत रिपोर्ट तैयार करें"
+          "विस्तृत एआई ऑडिट रिपोर्ट तैयार करें"
           if is_hindi
-          else "Generate Detailed Report"
+          else "Generate AI Engineering & Subsidy Report"
       )
   ):
     if not api_key:
@@ -299,78 +723,238 @@ with tab_advisory:
       report_box = st.empty()
       start_time = time.time()
       try:
+        pil_img = Image.open(uploaded_file) if uploaded_file else None
+        if pil_img:
+          st.image(
+              pil_img, caption="Uploaded Quotation / Bill", width=300
+          )
+
         quote_context = (
-            f"Vendor Quoted Price: Rs. {vendor_quote}."
+            f"Vendor Quoted Total: Rs. {vendor_quote:,} (Benchmark is Rs."
+            f" {bench_gross_cost:,})."
             if vendor_quote > 0
             else "No vendor quote entered."
         )
-        prompt = f"""
-You are UrjaMitra, an expert Solar Rooftop Consultant specializing in India's PM Surya Ghar Muft Bijli Yojana.
-Analyze the following user profile and return a structured assessment directly in clean Markdown format in {lang}.
+        img_instruction = (
+            "If an image is attached, extract the quoted price, panel brand,"
+            " inverter specs, and audit them strictly."
+            if pil_img
+            else ""
+        )
 
-DO NOT include raw scratchpad calculations, planning notes, or restatements of input. Begin immediately with '# UrjaMitra Solar Assessment Report'.
-
-User Details:
-- State: {state}
-- Monthly Electricity Bill: Rs. {monthly_bill}
-- Available Shadow-free Roof: {roof_area} sq. ft.
-- Recommended Plant Capacity: {display_kw} kW
-- Applicable Central Government Subsidy: Rs. {subsidy_amount} (Official MNRE slab)
-- Estimated Net Investment: Rs. {net_estimated_cost}
-- Expected Annual Financial Savings: Rs. {annual_savings}
-- {quote_context}
-
-Provide these structured sections:
-1. Executive Feasibility Assessment (Roof sufficiency, expected daily kWh units)
-2. Subsidy Claim Procedure (Official steps on pmsuryaghar.gov.in)
-3. Quote Audit & Fair Price Verification (Compare vendor quote against benchmark ~Rs. 60,000/kW. Flag non-DCR modules or inflation).
-4. Critical Safety & Technical Tips (Earthing pits, Lightning arrestor, ACDB/DCDB, Net meter).
+        if not is_agri:
+          mode_details = f"""
+Sector: Residential On-Grid Rooftop ({scheme_name})
+State & Utility: {state} ({state_info['discom']} / {state_info['regulator']})
+Monthly Bill: Rs. {monthly_bill} | Sanctioned Load: {sanctioned_load} kW | Roof Area: {roof_area} sq. ft.
+Recommended System: {display_kw} kW | Eligible Subsidy: Rs. {subsidy_amount:,} | Net Cost: Rs. {net_estimated_cost:,}
+Expected Annual Savings: Rs. {annual_savings:,} | Payback: {payback_years} Years
+{quote_context}
 """
-        used_model = stream_ai_response(
-            api_key, prompt, report_box, status_box
+        else:
+          mode_details = f"""
+Sector: Agricultural Solar Water Pump ({scheme_name})
+State & Agency: {state} ({state_info['agri_agency']} / {state_info['discom']})
+Farmland: {land_acres} Acres | Water Table Depth: {water_depth} Feet | Pump Type: {pump_type}
+Recommended Pump: {capacity_label} | Eligible Subsidy: Rs. {subsidy_amount:,} | Farmer Net Share: Rs. {net_estimated_cost:,}
+Annual Diesel/Power Savings: Rs. {annual_savings:,} | Payback: {payback_years} Years
+{quote_context}
+"""
+
+        prompt = f"""
+You are UrjaMitra, Senior Solar Engineering & Policy Consultant for India's MNRE schemes.
+Analyze the following profile and output a clean, authoritative Markdown report in {lang}.
+{img_instruction}
+DO NOT include raw scratchpad calculations or planning notes. Begin immediately with '# ☀️ UrjaMitra Technical & Financial Audit Report'.
+
+Profile:
+{mode_details}
+
+Include these exact 4 sections:
+1. Executive Engineering Feasibility (Check roof area & sanctioned load enhancement requirement for residential, OR borewell depth head & discharge rate for agricultural pump).
+2. Step-by-Step Subsidy Claim Roadmap (Official portal steps for {scheme_name} in {state}).
+3. Fair-Price & Component Audit (Compare vendor quote vs benchmark Rs. {bench_gross_cost:,}. Warn strictly about ALMM & mandatory DCR domestic solar cell requirements).
+4. Critical Electrical Protection Checklist (3 separate Earthing pits, Lightning Arrestor, DCDB/ACDB Surge Protection, hot-dip GI structure thickness).
+"""
+        full_rep, used_model = stream_ai_response(
+            api_key, prompt, report_box, status_box, pil_img
         )
         latency = round(time.time() - start_time, 2)
         status_box.empty()
         st.success(
-            f"✅ Completed in {latency}s | Engine: {used_model} | Cost: $0.00 (Free Tier) | Grounded in MNRE Guidelines"
+            f"✅ Completed in {latency}s | Engine: {used_model} | Cost: $0.00 (Free Tier) | Grounded in {state_info['regulator']} & MNRE Rules"
         )
 
+        st.download_button(
+            label="📥 "
+            + (
+                "ऑडिट रिपोर्ट डाउनलोड करें (.md)"
+                if is_hindi
+                else "Download Official Audit Report (.md)"
+            ),
+            data=full_rep,
+            file_name=f"UrjaMitra_Solar_Report_{state}_{display_kw}kW.md",
+            mime="text/markdown",
+        )
       except Exception as e:
         status_box.empty()
         st.error(f"Error calling AI API: {str(e)}")
 
-# --- TAB 2: DISCOM LETTER ---
+# --- TAB 2: 25-YEAR ROI CHART & ELECTRICAL ENGINEERING BOM ---
+with tab_roi:
+  col_chart, col_bom = st.columns([1.15, 1])
+
+  with col_chart:
+    st.markdown(
+        "#### 📈 "
+        + (
+            "25-वर्षीय संचयी वित्तीय लाभ (₹)"
+            if is_hindi
+            else "25-Year Cumulative Wealth Trajectory (₹)"
+        )
+    )
+    years = list(range(1, 26))
+    cum_cashflow = []
+    current_bal = -net_estimated_cost
+    for y in years:
+      # Assume 3% annual tariff/diesel inflation and 0.5% panel degradation
+      yr_saving = annual_savings * ((1.025) ** (y - 1))
+      current_bal += yr_saving
+      cum_cashflow.append(round(current_bal))
+
+    df_roi = pd.DataFrame({
+        "Year": years,
+        "Net Cumulative Profit (₹)": cum_cashflow,
+    }).set_index("Year")
+
+    st.area_chart(df_roi, color="#10B981", height=320)
+    total_25yr_wealth = cum_cashflow[-1]
+    st.info(
+        f"💎 **25-Year Net Tax-Free Wealth Created:** ₹{total_25yr_wealth:,} (After recovering your initial ₹{net_estimated_cost:,} investment in {payback_years} years)."
+    )
+
+  with col_bom:
+    st.markdown(
+        "#### ⚡ "
+        + (
+            "इलेक्ट्रिकल इंजीनियरिंग BoM (अनिवार्य मानक)"
+            if is_hindi
+            else "Electrical Engineering BoM & Safety Specs"
+        )
+    )
+
+    if not is_agri and display_kw > sanctioned_load:
+      st.warning(
+          f"⚠️ **Load Enhancement Required:** Your recommended plant ({display_kw} kW) exceeds your existing sanctioned load ({sanctioned_load} kW). Apply for load enhancement with {state_info['discom']}."
+      )
+
+    phase_type = (
+        "Single Phase (230V AC)"
+        if display_kw <= 3 and not is_agri
+        else "Three Phase (415V AC)"
+    )
+    panel_count = max(2, round((display_kw * 1000) / 545))
+
+    bom_data = [
+        {
+            "Component": "Solar PV Modules",
+            "Specification": (
+                f"{panel_count} Nos. × 545Wp Mono-PERC / TOPCon (ALMM & DCR"
+                " Certified)"
+            ),
+        },
+        {
+            "Component": (
+                "Inverter / Pump Controller"
+                if is_agri
+                else "Grid-Tied String Inverter"
+            ),
+            "Specification": (
+                f"{display_kw} kW, {phase_type}, IP65 Rated, >97.5% Efficiency"
+            ),
+        },
+        {
+            "Component": "Mounting Structure",
+            "Specification": (
+                "Hot-Dip Galvanized Iron (GI, min 80 microns), 150 km/h Wind"
+                " Rated"
+            ),
+        },
+        {
+            "Component": "DC Solar Cable",
+            "Specification": (
+                "4.0 sq.mm EN 50618 Tinned Copper, UV & XLPO Insulated"
+            ),
+        },
+        {
+            "Component": "DCDB (DC Protection)",
+            "Specification": (
+                "600V/1000V DC MCB + 15A Cylindrical Fuse + Type-2 DC SPD"
+            ),
+        },
+        {
+            "Component": "ACDB (AC Protection)",
+            "Specification": (
+                f"{'32A DP' if display_kw <= 3 else '32A TPN'} MCB + Type-2 AC"
+                " Surge Protection Device"
+            ),
+        },
+        {
+            "Component": "Earthing & Lightning",
+            "Specification": (
+                "3 Separate Chemical Earthing Pits (DC, AC, LA) < 5 Ohms +"
+                " ESE/Spike LA"
+            ),
+        },
+    ]
+    st.table(pd.DataFrame(bom_data))
+
+# --- TAB 3: DISCOM / HAREDA APPLICATION LETTER ---
 with tab_letter:
-  st.info(
-      "डिस्कॉम (SDO कार्यालय) के लिए औपचारिक नेट-मीटरिंग अनापत्ति आवेदन।"
-      if is_hindi
-      else "Formal Net-Metering Application Letter for your local Discom SDO."
+  st.write(
+      "📄 "
+      + (
+          f"{state_info['discom']} / {state_info['agri_agency']} के लिए तुरंत प्रिंट करने योग्य आधिकारिक आवेदन पत्र।"
+          if is_hindi
+          else f"Generate an executive, print-ready application addressed to {state_info['discom']} or {state_info['agri_agency']} with standard 'XXXX' redaction placeholders."
+      )
   )
+
   if st.button(
-      "📝 " + ("आवेदन पत्र तैयार करें" if is_hindi else "Draft Application Letter")
+      "📝 "
+      + (
+          "आधिकारिक आवेदन पत्र तैयार करें"
+          if is_hindi
+          else "Draft Official Application Letter"
+      )
   ):
     if not api_key:
       st.error("Please enter a valid Gemini API key.")
     else:
       with st.spinner(
-          "औपचारिक आवेदन पत्र तैयार किया जा रहा है... / Drafting professional application letter..."
+          "आधिकारिक पत्र तैयार किया जा रहा है... / Drafting formal utility application..."
       ):
         start_time = time.time()
         try:
+          target_authority = (
+              f"Project Officer, {state_info['agri_agency']} /"
+              f" {state_info['discom']}"
+              if is_agri
+              else f"The Sub-Divisional Officer (SDO), {state_info['discom']}"
+          )
+
           if is_hindi:
             letter_prompt = f"""
-आप भारतीय विद्युत नियामक एवं प्रशासनिक प्रारूपण (Administrative Drafting) के विशेषज्ञ हैं।
-पीएम सूर्य घर मुफ्त बिजली योजना के अंतर्गत {state} के संबंधित बिजली वितरण निगम (DISCOM) के उप-मंडल अधिकारी (SDO) को {display_kw} kW ऑन-ग्रिड रूफटॉप सोलर प्लांट हेतु नेट-मीटरिंग एवं लोड स्वीकृति के लिए एक अत्यंत उच्च स्तरीय, कानूनी रूप से परिपूर्ण और औपचारिक आवेदन पत्र लिखें।
+आप भारतीय विद्युत नियामक एवं प्रशासनिक प्रारूपण के विशेषज्ञ हैं।
+{scheme_name} के अंतर्गत {state} के संबंधित अधिकारी ({target_authority}) को {capacity_label} सोलर सिस्टम की स्वीकृति हेतु एक अत्यंत उच्च स्तरीय, कानूनी रूप से परिपूर्ण और औपचारिक आवेदन पत्र लिखें।
 
 आवेदक विवरण:
 सभी व्यक्तिगत विवरणों के लिए पेशेवर 'XXXX' प्रारूप का उपयोग करें:
-- उपभोक्ता का नाम: XXXX
-- उपभोक्ता खाता संख्या (CA / Account No.): XXXXXXXXXXXX
-- मीटर संख्या: XXXXXXXX
-- मौजूदा स्वीकृत लोड: X kW
-- परिसर का पता: मकान नं. XXX, वार्ड/ग्राम XXXX, जिला XXXX, {state}
+- आवेदक का नाम: XXXX
+- खाता / आवेदन संख्या: XXXXXXXXXXXX
+- मीटर / खसरा संख्या: XXXXXXXX
+- पता: मकान/खेत नं. XXX, ग्राम/सेक्टर XXXX, जिला XXXX, {state}
 - मोबाइल नंबर: +91-XXXXXXXXXX
-- ईमेल: xxxx@email.com
 
 सख्त निर्देश:
 पूरे औपचारिक पत्र को अनिवार्य रूप से <LETTER> और </LETTER> टैग के भीतर ही लिखें।
@@ -378,17 +962,17 @@ with tab_letter:
 """
           else:
             letter_prompt = f"""
-You are an executive legal and administrative drafting expert in Indian utility regulations.
-Draft an authoritative, highly formal, single-page application letter addressed to the Sub-Divisional Officer (SDO) of the electricity distribution utility in {state}.
-Request: Technical Feasibility Approval and Bi-directional Net-Metering Installation for a {display_kw} kW on-grid solar photovoltaic system under PM Surya Ghar Muft Bijli Yojana.
+You are an executive legal and administrative drafting expert in Indian utility regulations ({state_info['regulator']}).
+Draft an authoritative, highly formal, single-page application letter addressed to {target_authority}, {state}.
+Request: Technical Feasibility Approval and Sanction for a {capacity_label} solar installation under {scheme_name}.
 
 Applicant Redaction / Details:
 Use professional 'XXXX' placeholders for all consumer credentials:
-- Consumer Name: XXXX
-- Consumer Account Number (CA No.): XXXXXXXXXXXX
+- Applicant Name: XXXX
+- Consumer Account / Land Khasra No.: XXXXXXXXXXXX
 - Existing Meter Number: XXXXXXXX
-- Existing Sanctioned Load: X kW
-- Installation Address: House No. XXX, Sector/Village XXXX, City/District XXXX, {state}
+- Existing Sanctioned Load: {sanctioned_load if not is_agri else 'N/A'} kW
+- Installation Address: Premises No. XXX, Sector/Village XXXX, District XXXX, {state}
 - Contact Number: +91-XXXXXXXXXX
 - Email: xxxx@email.com
 
@@ -398,20 +982,30 @@ Do NOT write planning outlines, scratchpads, or commentary.
 Begin directly inside the tags with:
 
 To,
-The Sub-Divisional Officer (SDO),
-Electricity Distribution Utility (DISCOM),
-Sub-Divisional Office, {state}.
+{target_authority},
+{state}.
 """
-
           raw_output, used_model = generate_ai_text(api_key, letter_prompt)
           clean_letter = extract_clean_letter(raw_output)
 
           latency = round(time.time() - start_time, 2)
           st.success(
-              f"✅ Drafted via {used_model} in {latency}s | Ready to print"
+              f"✅ Drafted via {used_model} in {latency}s | Grounded in {state_info['regulator']} Format"
           )
 
           st.markdown(clean_letter)
+
+          st.download_button(
+              label="📥 "
+              + (
+                  "आवेदन पत्र डाउनलोड करें (.txt)"
+                  if is_hindi
+                  else "Download Print-Ready Letter (.txt)"
+              ),
+              data=clean_letter,
+              file_name=f"Official_Solar_Application_{state}.txt",
+              mime="text/plain",
+          )
 
           with st.expander(
               "📋 "
@@ -421,19 +1015,27 @@ Sub-Divisional Office, {state}.
                   else "Click here to Copy Plain Text"
               )
           ):
-            st.text_area("Letter Text", value=clean_letter, height=360)
+            st.text_area("Letter Text", value=clean_letter, height=320)
 
         except Exception as e:
           st.error(f"Error generating letter: {str(e)}")
 
-# --- TAB 3: AI ASSISTANT ---
+# --- TAB 4: AI COPILOT Q&A ---
 with tab_faq:
-  user_q = st.text_input(
-      "सौर ऊर्जा या योजना से संबंधित प्रश्न पूछें:"
-      if is_hindi
-      else "Ask any question regarding solar subsidies or installation:"
+  st.markdown(
+      "#### 💬 "
+      + (
+          "पीएम सूर्य घर एवं पीएम-कुसुम विशेषज्ञ से पूछें"
+          if is_hindi
+          else "Ask the MNRE & Discom Regulatory Copilot"
+      )
   )
-  if st.button("उत्तर प्राप्त करें" if is_hindi else "Get Answer") and user_q:
+  user_q = st.text_input(
+      "अपना प्रश्न यहाँ लिखें (उदा. 'क्या डीसीआर पैनल अनिवार्य हैं?' या 'हरियाणा में 5 HP पंप पर कितनी सब्सिडी है?'):"
+      if is_hindi
+      else "Ask about DCR vs Non-DCR panels, net-metering export rates, load enhancement, or PM-KUSUM subsidies:"
+  )
+  if st.button("⚡ उत्तर प्राप्त करें" if is_hindi else "⚡ Get Expert Answer") and user_q:
     if not api_key:
       st.error("Please enter a valid Gemini API key.")
     else:
@@ -441,13 +1043,12 @@ with tab_faq:
       faq_box = st.empty()
       try:
         faq_prompt = f"""
-You are the official PM Surya Ghar scheme query assistant.
-Answer this citizen question accurately and concisely in {lang}:
+You are UrjaMitra, the official solar engineering and policy copilot for {state} ({state_info['discom']} / {state_info['agri_agency']}).
+Answer this citizen question accurately, practically, and concisely in {lang}:
 Question: "{user_q}"
-Ensure your reply cites official MNRE rules (e.g., DCR module requirements, grid-connected vs off-grid subsidy eligibility, net metering).
-Begin directly with the answer.
+Cite official MNRE, PM Surya Ghar, PM-KUSUM, and {state_info['regulator']} guidelines. Begin directly with the answer.
 """
-        used_model = stream_ai_response(
+        _, used_model = stream_ai_response(
             api_key, faq_prompt, faq_box, status_box
         )
         status_box.empty()
