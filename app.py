@@ -1041,6 +1041,7 @@ with tab_faq:
     else:
       status_box = st.empty()
       faq_box = st.empty()
+      start_time = time.time()
       try:
         faq_prompt = f"""
 You are UrjaMitra, the official solar engineering and policy copilot for {state} ({state_info['discom']} / {state_info['agri_agency']}).
@@ -1048,11 +1049,20 @@ Answer this citizen question accurately, practically, and concisely in {lang}:
 Question: "{user_q}"
 Cite official MNRE, PM Surya Ghar, PM-KUSUM, and {state_info['regulator']} guidelines. Begin directly with the answer.
 """
-        _, used_model = stream_ai_response(
-            api_key, faq_prompt, faq_box, status_box
-        )
+        # Force use of Gemma model for instant, non-stalling response
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("models/gemma-4-26b-a4b-it")
+        response = model.generate_content(faq_prompt, stream=True)
+
+        full_text = ""
+        for chunk in response:
+          if chunk.text:
+            full_text += chunk.text
+            faq_box.markdown(full_text)
+
+        latency = round(time.time() - start_time, 2)
         status_box.empty()
-        st.success(f"✅ Answered via {used_model}")
+        st.success(f"✅ Answered via gemma-4-26b-a4b-it in {latency}s")
       except Exception as e:
         status_box.empty()
         st.error(f"Error: {str(e)}")
