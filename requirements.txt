@@ -2,3 +2,4 @@ streamlit
 google-generativeai
 pandas
 pillow
+plotly
