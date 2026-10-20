@@ -14,48 +14,61 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- DESIGNER CUSTOM CSS (SOLAR-TECH PALETTE) ---
+# --- DESIGNER CUSTOM CSS (FIXING HORIZONTAL OVERFLOW & STRETCHING) ---
 st.markdown(
     """
 <style>
-    /* Global Background & Typography */
+    /* Prevent horizontal stretching & page overflow */
     .stApp {
         background: linear-gradient(180deg, #F8FAFC 0%, #EFF6FF 100%);
         color: #0F172A;
+        overflow-x: hidden;
     }
     
+    /* Constrain tables and text areas to avoid right-side blowout */
+    table {
+        width: 100% !important;
+        table-layout: auto !important;
+        word-break: break-word;
+    }
+    
+    .element-container, .stMarkdown, .stTable, div[data-testid="stHorizontalBlock"] {
+        max-width: 100%;
+    }
+
     /* Hero Banner Styling */
     .hero-container {
         background: linear-gradient(135deg, #0F172A 0%, #1E3A8A 60%, #047857 100%);
-        padding: 28px 32px;
-        border-radius: 18px;
+        padding: 24px 28px;
+        border-radius: 16px;
         color: #FFFFFF;
-        margin-bottom: 24px;
-        box-shadow: 0 12px 30px -10px rgba(15, 23, 42, 0.35);
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        margin-bottom: 20px;
+        box-shadow: 0 10px 25px -8px rgba(15, 23, 42, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-sizing: border-box;
     }
     .hero-badge {
         background: rgba(245, 158, 11, 0.2);
         border: 1px solid #F59E0B;
         color: #FCD34D;
-        padding: 4px 12px;
+        padding: 4px 10px;
         border-radius: 999px;
-        font-size: 0.78rem;
+        font-size: 0.75rem;
         font-weight: 700;
         letter-spacing: 0.5px;
         text-transform: uppercase;
         display: inline-block;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
     }
     .hero-title {
-        font-size: 2.3rem;
+        font-size: 2.1rem;
         font-weight: 800;
         margin: 0;
         letter-spacing: -0.5px;
         color: #FFFFFF;
     }
     .hero-subtitle {
-        font-size: 1.02rem;
+        font-size: 0.95rem;
         color: #E2E8F0;
         margin-top: 6px;
         font-weight: 400;
@@ -64,53 +77,50 @@ st.markdown(
     /* Custom KPI Metric Cards */
     .kpi-card {
         background: #FFFFFF;
-        padding: 20px 22px;
-        border-radius: 16px;
-        box-shadow: 0 4px 15px rgba(15, 23, 42, 0.05);
+        padding: 16px 18px;
+        border-radius: 14px;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
         border: 1px solid #E2E8F0;
         border-top: 5px solid #F59E0B;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        box-sizing: border-box;
         height: 100%;
-    }
-    .kpi-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.09);
     }
     .kpi-card.green { border-top-color: #10B981; }
     .kpi-card.blue { border-top-color: #3B82F6; }
     .kpi-card.purple { border-top-color: #8B5CF6; }
 
     .kpi-title {
-        font-size: 0.82rem;
+        font-size: 0.78rem;
         font-weight: 700;
         color: #64748B;
         text-transform: uppercase;
-        letter-spacing: 0.6px;
-        margin-bottom: 6px;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
     }
     .kpi-value {
-        font-size: 1.9rem;
+        font-size: 1.6rem;
         font-weight: 800;
         color: #0F172A;
         margin: 0;
         line-height: 1.2;
     }
     .kpi-sub {
-        font-size: 0.82rem;
+        font-size: 0.78rem;
         font-weight: 600;
         color: #059669;
-        margin-top: 8px;
+        margin-top: 6px;
     }
 
     /* Section Containers */
     .info-strip {
         background: #FFFFFF;
         border-left: 5px solid #0284C7;
-        padding: 14px 18px;
-        border-radius: 10px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        margin-bottom: 18px;
-        font-size: 0.92rem;
+        padding: 12px 16px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+        margin-bottom: 16px;
+        font-size: 0.88rem;
+        box-sizing: border-box;
     }
 
     /* Primary Action Buttons */
@@ -118,46 +128,41 @@ st.markdown(
         background: linear-gradient(135deg, #059669 0%, #047857 100%);
         color: white;
         border: none;
-        border-radius: 10px;
-        padding: 0.65rem 1.4rem;
+        border-radius: 8px;
+        padding: 0.55rem 1.2rem;
         font-weight: 700;
-        font-size: 0.98rem;
-        box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
-        transition: all 0.2s ease;
+        font-size: 0.92rem;
+        box-shadow: 0 4px 10px rgba(5, 150, 105, 0.2);
         width: 100%;
     }
     div.stButton > button:hover {
         background: linear-gradient(135deg, #047857 0%, #065F46 100%);
-        border: none;
         color: #FFFFFF;
-        transform: translateY(-1px);
-        box-shadow: 0 6px 16px rgba(5, 150, 105, 0.35);
     }
 
     /* Tabs Polish */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
+        gap: 8px;
         background-color: #E2E8F0;
-        padding: 6px;
-        border-radius: 12px;
+        padding: 4px;
+        border-radius: 10px;
     }
     .stTabs [data-baseweb="tab"] {
-        border-radius: 8px;
-        padding: 10px 18px;
+        border-radius: 6px;
+        padding: 8px 14px;
         font-weight: 700;
-        background-color: transparent;
+        font-size: 0.88rem;
     }
     .stTabs [aria-selected="true"] {
         background-color: #FFFFFF !important;
         color: #0F172A !important;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-# --- STATE-SPECIFIC DISCOM & SOLAR IRRADIANCE DATABASE ---
+# --- STATE-SPECIFIC DATABASE ---
 STATE_DB = {
     "Haryana": {
         "discom": "DHBVN / UHBVN",
@@ -165,7 +170,7 @@ STATE_DB = {
         "agri_agency": "HAREDA",
         "tariff": 6.75,
         "insolation": 4.6,
-        "kusum_state_sub": 45,  # 30% Central + 45% State = 75% Total in Haryana
+        "kusum_state_sub": 45,
     },
     "Rajasthan": {
         "discom": "JVVNL / AVVNL / JdVVNL",
@@ -176,7 +181,7 @@ STATE_DB = {
         "kusum_state_sub": 30,
     },
     "Uttar Pradesh": {
-        "discom": "UPPCL (PVVNL / DVVNL / MVVNL)",
+        "discom": "UPPCL",
         "regulator": "UPERC",
         "agri_agency": "UPNEDA",
         "tariff": 7.00,
@@ -192,7 +197,7 @@ STATE_DB = {
         "kusum_state_sub": 30,
     },
     "Delhi": {
-        "discom": "BSES Rajdhani / BSES Yamuna / Tata Power-DDL",
+        "discom": "BSES / Tata Power",
         "regulator": "DERC",
         "agri_agency": "EE&REM Delhi",
         "tariff": 8.00,
@@ -200,7 +205,7 @@ STATE_DB = {
         "kusum_state_sub": 30,
     },
     "Maharashtra": {
-        "discom": "MSEDCL (Mahavitaran)",
+        "discom": "MSEDCL",
         "regulator": "MERC",
         "agri_agency": "MEDA",
         "tariff": 8.50,
@@ -217,11 +222,10 @@ STATE_DB = {
     },
 }
 
-# --- RETRIEVE SECURE API KEY ---
 configured_key = st.secrets.get("GEMINI_API_KEY", "")
 
-# --- TOP BAR: LANGUAGE SELECTOR ---
-col_spacer, col_lang = st.columns([4, 1])
+# --- LANGUAGE SELECTOR ---
+_, col_lang = st.columns([4, 1])
 with col_lang:
   lang = st.selectbox(
       "🌐 भाषा / Language",
@@ -238,7 +242,7 @@ if is_hindi:
     <div class="hero-container">
         <div class="hero-badge">🇮🇳 एमएनआरई (MNRE) एवं पीएम-कुसुम मानकों पर आधारित</div>
         <h1 class="hero-title">☀️ ऊर्जा मित्र (UrjaMitra)</h1>
-        <p class="hero-subtitle">एआई-संचालित सोलर साइज़िंग, पीएम सूर्य घर एवं पीएम-कुसुम सब्सिडी, मल्टीमॉडल कोटेशन ऑडिट और डिस्कॉम नेट-मीटरिंग सहायक</p>
+        <p class="hero-subtitle">एआई-संचालित सोलर साइज़िंग, पीएम सूर्य घर एवं पीएम-कुसुम सब्सिडी, कोटेशन ऑडिट और डिस्कॉम नेट-मीटरिंग सहायक</p>
     </div>
     """,
       unsafe_allow_html=True,
@@ -255,7 +259,7 @@ else:
       unsafe_allow_html=True,
   )
 
-# --- SIDEBAR: USER INPUTS ---
+# --- SIDEBAR INPUTS ---
 st.sidebar.markdown(
     "### ⚙️ " + ("उपभोक्ता प्रोफ़ाइल" if is_hindi else "Consumer Profile")
 )
@@ -295,7 +299,6 @@ is_agri = "PM-KUSUM" in selected_mode
 
 st.sidebar.markdown("---")
 
-# Dynamic Sidebar Inputs based on Mode
 if not is_agri:
   st.sidebar.markdown(
       "#### 🏠 " + ("घरेलू विवरण" if is_hindi else "Residential Parameters")
@@ -380,9 +383,8 @@ uploaded_file = st.sidebar.file_uploader(
     type=["png", "jpg", "jpeg"],
 )
 
-# --- DETERMINISTIC ENGINEERING & SUBSIDY ENGINE ---
+# --- DETERMINISTIC ENGINE ---
 if not is_agri:
-  # RESIDENTIAL: PM SURYA GHAR MUFT BIJLI YOJANA
   unit_rate = state_info["tariff"]
   daily_gen_per_kw = state_info["insolation"]
   est_monthly_units = monthly_bill / unit_rate
@@ -399,7 +401,7 @@ if not is_agri:
     subsidy_amount = 60000
   else:
     display_kw = min(10, int(round(raw_kw)))
-    subsidy_amount = 78000  # Capped at 3kW slab per MNRE rules
+    subsidy_amount = 78000
 
   bench_gross_cost = display_kw * 58000
   net_estimated_cost = max(0, bench_gross_cost - subsidy_amount)
@@ -416,8 +418,6 @@ if not is_agri:
   scheme_name = "PM Surya Ghar Muft Bijli Yojana"
 
 else:
-  # AGRICULTURAL: PM-KUSUM (SOLAR WATER PUMP)
-  # Calculate required HP from depth and acreage
   if water_depth > 200 or land_acres > 10:
     recommended_hp = 10
     solar_kw = 10.0
@@ -436,12 +436,10 @@ else:
     bench_gross_cost = 155000
 
   display_kw = solar_kw
-  total_sub_pct = 30 + state_info["kusum_state_sub"]  # Central 30% + State %
+  total_sub_pct = 30 + state_info["kusum_state_sub"]
   subsidy_amount = round(bench_gross_cost * (total_sub_pct / 100.0))
   net_estimated_cost = max(0, bench_gross_cost - subsidy_amount)
-  annual_savings = round(
-      monthly_diesel_spend * 10
-  )  # 10 active cropping months
+  annual_savings = round(monthly_diesel_spend * 10)
   payback_years = (
       round(net_estimated_cost / annual_savings, 1) if annual_savings > 0 else 0
   )
@@ -452,7 +450,7 @@ else:
   subsidy_sub = f"{total_sub_pct}% Subsidy ({state_info['agri_agency']})"
   scheme_name = f"PM-KUSUM ({state_info['agri_agency']})"
 
-# --- STATE REGULATORY STRIP ---
+# --- REGULATORY STRIP ---
 st.markdown(
     f"""
 <div class="info-strip">
@@ -465,7 +463,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- DESIGNER KPI CARDS ---
+# --- KPI CARDS ---
 k1, k2, k3, k4 = st.columns(4)
 
 with k1:
@@ -498,7 +496,7 @@ with k3:
     <div class="kpi-card blue">
         <div class="kpi-title">{"आपकी शुद्ध लागत" if is_hindi else "Net Citizen Investment"}</div>
         <div class="kpi-value">₹{net_estimated_cost:,}</div>
-        <div class="kpi-sub">💰 Benchmark Gross: ₹{bench_gross_cost:,}</div>
+        <div class="kpi-sub">💰 Benchmark: ₹{bench_gross_cost:,}</div>
     </div>
     """,
       unsafe_allow_html=True,
@@ -519,7 +517,7 @@ with k4:
 st.write("")
 
 
-# --- RESILIENT AI MODEL SELECTOR & DISPATCHERS ---
+# --- AI DISPATCHERS ---
 def get_candidate_models(key: str):
   genai.configure(api_key=key)
   candidates = [
@@ -566,7 +564,6 @@ def stream_ai_response(
     except Exception as e:
       err_str = str(e)
       last_err = e
-      # If multimodal fails on a text-only Gemma model or hits 429 quota, try next or fallback to text
       if (
           "429" in err_str
           or "404" in err_str
@@ -655,7 +652,7 @@ def extract_clean_letter(raw_text: str) -> str:
   return raw_text.strip()
 
 
-# --- MAIN NAVIGATION TABS ---
+# --- TABS ---
 tab_advisory, tab_roi, tab_letter, tab_faq = st.tabs([
     (
         "📑 एआई विशेषज्ञ ऑडिट एवं रिपोर्ट"
@@ -675,38 +672,36 @@ tab_advisory, tab_roi, tab_letter, tab_faq = st.tabs([
     "💬 " + ("सौर सहायक (AI Q&A)" if is_hindi else "Interactive Solar Copilot"),
 ])
 
-# --- TAB 1: AI REPORT & MULTIMODAL QUOTE AUDIT ---
+# --- TAB 1: REPORT & QUOTE AUDIT ---
 with tab_advisory:
-  col_info, col_action = st.columns([3, 1])
-  with col_info:
-    if uploaded_file is not None:
-      st.success(
-          "📸 "
-          + (
-              "कोटेशन/बिल इमेज अपलोड हो गई है! एआई इसका विज़न ऑडिट करेगा।"
-              if is_hindi
-              else "Document image attached! Multimodal Vision Audit active."
-          )
+  if uploaded_file is not None:
+    st.success(
+        "📸 "
+        + (
+            "कोटेशन/बिल इमेज अपलोड हो गई है! एआई इसका विज़न ऑडिट करेगा।"
+            if is_hindi
+            else "Document image attached! Multimodal Vision Audit active."
+        )
+    )
+  elif vendor_quote > 0:
+    diff = vendor_quote - bench_gross_cost
+    if diff > 15000:
+      st.warning(
+          f"⚠️ Installer quote (₹{vendor_quote:,}) is ₹{diff:,} above the fair MNRE benchmark (₹{bench_gross_cost:,})."
       )
-    elif vendor_quote > 0:
-      diff = vendor_quote - bench_gross_cost
-      if diff > 15000:
-        st.warning(
-            f"⚠️ Installer quote (₹{vendor_quote:,}) is ₹{diff:,} above the fair MNRE benchmark (₹{bench_gross_cost:,}). Click Generate for negotiation points."
-        )
-      else:
-        st.info(
-            f"✅ Installer quote (₹{vendor_quote:,}) is within fair market benchmark (₹{bench_gross_cost:,})."
-        )
     else:
-      st.write(
-          "💡 "
-          + (
-              "संपूर्ण तकनीकी व्यवहार्यता, सब्सिडी प्रक्रिया और सुरक्षा ऑडिट के लिए नीचे क्लिक करें।"
-              if is_hindi
-              else "Generate a customized engineering feasibility study, subsidy roadmap, and vendor price audit."
-          )
+      st.info(
+          f"✅ Installer quote (₹{vendor_quote:,}) is within fair market benchmark (₹{bench_gross_cost:,})."
       )
+  else:
+    st.write(
+        "💡 "
+        + (
+            "संपूर्ण तकनीकी व्यवहार्यता, सब्सिडी प्रक्रिया और सुरक्षा ऑडिट के लिए नीचे क्लिक करें।"
+            if is_hindi
+            else "Generate a customized engineering feasibility study, subsidy roadmap, and vendor price audit."
+        )
+    )
 
   if st.button(
       "🚀 "
@@ -725,9 +720,7 @@ with tab_advisory:
       try:
         pil_img = Image.open(uploaded_file) if uploaded_file else None
         if pil_img:
-          st.image(
-              pil_img, caption="Uploaded Quotation / Bill", width=300
-          )
+          st.image(pil_img, caption="Uploaded Quotation / Bill", width=300)
 
         quote_context = (
             f"Vendor Quoted Total: Rs. {vendor_quote:,} (Benchmark is Rs."
@@ -771,10 +764,10 @@ Profile:
 {mode_details}
 
 Include these exact 4 sections:
-1. Executive Engineering Feasibility (Check roof area & sanctioned load enhancement requirement for residential, OR borewell depth head & discharge rate for agricultural pump).
-2. Step-by-Step Subsidy Claim Roadmap (Official portal steps for {scheme_name} in {state}).
-3. Fair-Price & Component Audit (Compare vendor quote vs benchmark Rs. {bench_gross_cost:,}. Warn strictly about ALMM & mandatory DCR domestic solar cell requirements).
-4. Critical Electrical Protection Checklist (3 separate Earthing pits, Lightning Arrestor, DCDB/ACDB Surge Protection, hot-dip GI structure thickness).
+1. Executive Engineering Feasibility
+2. Step-by-Step Subsidy Claim Roadmap
+3. Fair-Price & Component Audit (Compare vendor quote vs benchmark Rs. {bench_gross_cost:,}. Warn about DCR domestic solar cell requirements).
+4. Critical Electrical Protection Checklist (3 separate Earthing pits, Lightning Arrestor, DCDB/ACDB Surge Protection).
 """
         full_rep, used_model = stream_ai_response(
             api_key, prompt, report_box, status_box, pil_img
@@ -782,7 +775,7 @@ Include these exact 4 sections:
         latency = round(time.time() - start_time, 2)
         status_box.empty()
         st.success(
-            f"✅ Completed in {latency}s | Engine: {used_model} | Cost: $0.00 (Free Tier) | Grounded in {state_info['regulator']} & MNRE Rules"
+            f"✅ Completed in {latency}s | Engine: {used_model} | Cost: $0.00 (Free Tier)"
         )
 
         st.download_button(
@@ -800,7 +793,7 @@ Include these exact 4 sections:
         status_box.empty()
         st.error(f"Error calling AI API: {str(e)}")
 
-# --- TAB 2: 25-YEAR ROI CHART & ELECTRICAL ENGINEERING BOM ---
+# --- TAB 2: ROI CHART & BOM ---
 with tab_roi:
   col_chart, col_bom = st.columns([1.15, 1])
 
@@ -817,7 +810,6 @@ with tab_roi:
     cum_cashflow = []
     current_bal = -net_estimated_cost
     for y in years:
-      # Assume 3% annual tariff/diesel inflation and 0.5% panel degradation
       yr_saving = annual_savings * ((1.025) ** (y - 1))
       current_bal += yr_saving
       cum_cashflow.append(round(current_bal))
@@ -827,10 +819,10 @@ with tab_roi:
         "Net Cumulative Profit (₹)": cum_cashflow,
     }).set_index("Year")
 
-    st.area_chart(df_roi, color="#10B981", height=320)
+    st.area_chart(df_roi, color="#10B981", height=300)
     total_25yr_wealth = cum_cashflow[-1]
     st.info(
-        f"💎 **25-Year Net Tax-Free Wealth Created:** ₹{total_25yr_wealth:,} (After recovering your initial ₹{net_estimated_cost:,} investment in {payback_years} years)."
+        f"💎 **25-Year Net Tax-Free Wealth Created:** ₹{total_25yr_wealth:,} (Initial investment of ₹{net_estimated_cost:,} recovered in {payback_years} years)."
     )
 
   with col_bom:
@@ -845,7 +837,7 @@ with tab_roi:
 
     if not is_agri and display_kw > sanctioned_load:
       st.warning(
-          f"⚠️ **Load Enhancement Required:** Your recommended plant ({display_kw} kW) exceeds your existing sanctioned load ({sanctioned_load} kW). Apply for load enhancement with {state_info['discom']}."
+          f"⚠️ **Load Enhancement Required:** Recommended plant ({display_kw} kW) exceeds sanctioned load ({sanctioned_load} kW)."
       )
 
     phase_type = (
@@ -896,7 +888,7 @@ with tab_roi:
             "Component": "ACDB (AC Protection)",
             "Specification": (
                 f"{'32A DP' if display_kw <= 3 else '32A TPN'} MCB + Type-2 AC"
-                " Surge Protection Device"
+                " SPD"
             ),
         },
         {
@@ -909,7 +901,7 @@ with tab_roi:
     ]
     st.table(pd.DataFrame(bom_data))
 
-# --- TAB 3: DISCOM / HAREDA APPLICATION LETTER ---
+# --- TAB 3: APPLICATION LETTER ---
 with tab_letter:
   st.write(
       "📄 "
@@ -931,9 +923,7 @@ with tab_letter:
     if not api_key:
       st.error("Please enter a valid Gemini API key.")
     else:
-      with st.spinner(
-          "आधिकारिक पत्र तैयार किया जा रहा है... / Drafting formal utility application..."
-      ):
+      with st.spinner("Drafting formal utility application..."):
         start_time = time.time()
         try:
           target_authority = (
@@ -968,7 +958,7 @@ Request: Technical Feasibility Approval and Sanction for a {capacity_label} sola
 
 Applicant Redaction / Details:
 Use professional 'XXXX' placeholders for all consumer credentials:
-- Applicant Name: XXXX
+- Consumer Name: XXXX
 - Consumer Account / Land Khasra No.: XXXXXXXXXXXX
 - Existing Meter Number: XXXXXXXX
 - Existing Sanctioned Load: {sanctioned_load if not is_agri else 'N/A'} kW
@@ -990,7 +980,7 @@ To,
 
           latency = round(time.time() - start_time, 2)
           st.success(
-              f"✅ Drafted via {used_model} in {latency}s | Grounded in {state_info['regulator']} Format"
+              f"✅ Drafted via {used_model} in {latency}s | Ready to print"
           )
 
           st.markdown(clean_letter)
@@ -1015,7 +1005,7 @@ To,
                   else "Click here to Copy Plain Text"
               )
           ):
-            st.text_area("Letter Text", value=clean_letter, height=320)
+            st.text_area("Letter Text", value=clean_letter, height=280)
 
         except Exception as e:
           st.error(f"Error generating letter: {str(e)}")
@@ -1043,8 +1033,12 @@ with tab_faq:
       faq_box = st.empty()
       start_time = time.time()
       try:
-        faq_prompt = f"You are UrjaMitra, the official solar engineering and policy copilot for {state} ({state_info['discom']} / {state_info['agri_agency']}). Answer this citizen question accurately, practically, and concisely in {lang}: Question: \"{user_q}\". Cite official MNRE, PM Surya Ghar, PM-KUSUM, and {state_info['regulator']} guidelines. Begin directly with the answer."
-
+        faq_prompt = f"""
+You are UrjaMitra, the official solar engineering and policy copilot for {state} ({state_info['discom']} / {state_info['agri_agency']}).
+Answer this citizen question accurately, practically, and concisely in {lang}:
+Question: "{user_q}"
+Cite official MNRE, PM Surya Ghar, PM-KUSUM, and {state_info['regulator']} guidelines. Begin directly with the answer.
+"""
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("models/gemma-4-26b-a4b-it")
         response = model.generate_content(faq_prompt, stream=True)
