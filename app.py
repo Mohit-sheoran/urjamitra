@@ -1039,16 +1039,12 @@ with tab_faq:
     if not api_key:
       st.error("Please enter a valid Gemini API key.")
     else:
-      status_box = st.empty()
-      faq_box = st.empty()
-      start_time = time.time()
-      try:
-        faq_prompt = f"""
-You are UrjaMitra, the official solar engineering and policy copilot for {state} ({state_info['discom']} / {state_info['agri_agency']}).
-Answer this citizen question accurately, practically, and concisely in {lang}:
-Question: "{user_q}"
-Cite official MNRE, PM Surya Ghar, PM-KUSUM, and {state_info['regulator']} guidelines. Begin directly with the answer.
-"""
+     faq_prompt = f"You are UrjaMitra, the official solar engineering and policy copilot for {state} ({state_info['discom']} / {state_info['agri_agency']}). Answer this citizen question accurately, practically, and concisely in {lang}: Question: \"{user_q}\". Cite official MNRE, PM Surya Ghar, PM-KUSUM, and {state_info['regulator']} guidelines. Begin directly with the answer."
+
+            # Force use of Gemma model for instant, non-stalling response
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("models/gemma-4-26b-a4b-it")
+            response = model.generate_content(faq_prompt, stream=True)
         # Force use of Gemma model for instant, non-stalling response
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("models/gemma-4-26b-a4b-it")
